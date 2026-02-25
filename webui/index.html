@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Battle Cats Modern Save Editor</title>
+  <link rel="stylesheet" href="/webui/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><img class="icon" src="/webui/icons/cat.svg" alt="" /> Battle Cats Modern Save Editor</div>
+      <div class="top-actions">
+        <button id="loadBtn"><img class="icon" src="/webui/icons/folder.svg" alt="" /> Load</button>
+        <button id="saveBtn"><img class="icon" src="/webui/icons/save.svg" alt="" /> Save As</button>
+        <button id="refreshBtn"><img class="icon" src="/webui/icons/refresh.svg" alt="" /> Refresh</button>
+        <span id="pathLabel" class="path-label">No file selected</span>
+        <details id="advancedMenu" class="advanced-menu">
+          <summary>Advanced</summary>
+          <div class="advanced-menu-content">
+            <button id="syncBtn"><img class="icon" src="/webui/icons/sync.svg" alt="" /> Sync MyGamatoto</button>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel left-panel">
+        <div class="tabs panel-tabs sticky-tabs" role="tablist" aria-label="Left panel sections">
+          <button class="tab left-tab active" data-left-tab="summary">Summary</button>
+          <button class="tab left-tab" data-left-tab="resources">Resources</button>
+          <button class="tab left-tab" data-left-tab="presets">Presets</button>
+        </div>
+
+        <section id="left_summary" class="left-panel-content active panel-scroll">
+          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Account</h2>
+          <div id="summary" class="kv"></div>
+        </section>
+
+        <section id="left_resources" class="left-panel-content panel-scroll">
+          <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Quick Edit Resources</h2>
+          <div id="resourceEditor" class="editor-grid">
+            <label>Catfood <input id="res_catfood" type="number" /></label>
+            <label>XP <input id="res_xp" type="number" /></label>
+            <label>NP <input id="res_np" type="number" /></label>
+            <label>Normal Tickets <input id="res_normal_tickets" type="number" /></label>
+            <label>Rare Tickets <input id="res_rare_tickets" type="number" /></label>
+            <label>Platinum Tickets <input id="res_platinum_tickets" type="number" /></label>
+            <label>Legend Tickets <input id="res_legend_tickets" type="number" /></label>
+            <label>Leadership <input id="res_leadership" type="number" /></label>
+          </div>
+          <button id="applyResourcesBtn">Apply Resource Edits</button>
+        </section>
+
+        <section id="left_presets" class="left-panel-content panel-scroll">
+          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Presets</h2>
+          <div id="presets" class="stack"></div>
+        </section>
+      </aside>
+
+      <section class="panel center-panel">
+        <div class="cats-toolbar sticky-toolbar">
+          <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Cats</h2>
+          <select id="filterSelect">
+            <option>All</option>
+            <option>Unlocked</option>
+            <option>Locked</option>
+          </select>
+          <input id="searchInput" placeholder="Search by name or ID..." />
+          <span id="selectionBadge" class="selection-badge">0 selected</span>
+        </div>
+
+        <div class="action-zone">
+          <details class="action-card quick-card" open>
+            <summary>Quick Actions (selected cats)</summary>
+            <div id="contextActions" class="context-actions">
+              <button data-action="unlock">Unlock</button>
+              <button data-action="true_form">True Form</button>
+              <button data-action="fourth_form">4th Form</button>
+              <button data-action="legit_max">Legit Max</button>
+            </div>
+          </details>
+
+          <details class="action-card bulk-card">
+            <summary>Bulk Actions</summary>
+            <div class="bulk-panel">
+              <div class="bulk-head">
+                <label>Scope
+                  <select id="bulkScope">
+                    <option value="visible">Visible (filtered list)</option>
+                    <option value="all">All cats</option>
+                  </select>
+                </label>
+                <label class="check-inline"><input id="bulkOwnedOnly" type="checkbox" /> Owned only</label>
+              </div>
+              <div class="bulk-actions">
+                <button id="bulkUnlockBtn">Unlock</button>
+                <button id="bulkTrueFormBtn">True Forms</button>
+                <button id="bulkFourthFormBtn">4th Forms</button>
+                <button id="bulkLegitMaxBtn">Legit Max</button>
+              </div>
+              <div class="bulk-levels">
+                <label>Base <input id="bulkBase" type="number" min="1" placeholder="30" /></label>
+                <label>Plus <input id="bulkPlus" type="number" min="0" placeholder="10" /></label>
+                <label>Current Form <input id="bulkForm" type="number" min="0" max="3" placeholder="0-3" /></label>
+                <label>Unlocked Forms <input id="bulkUnlockedForms" type="number" min="0" max="4" placeholder="0-4" /></label>
+                <button id="bulkApplyLevelsBtn">Apply</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div class="table-wrap">
+          <table id="catsTable">
+            <thead>
+              <tr>
+                <th></th>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Owned</th>
+                <th>Base</th>
+                <th>Plus</th>
+                <th>Form</th>
+                <th>Forms</th>
+                <th>4th</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="panel right-panel">
+        <div class="tabs panel-tabs sticky-tabs" role="tablist" aria-label="Right panel sections">
+          <button class="tab right-tab active" data-right-tab="preview">Preview</button>
+          <button class="tab right-tab" data-right-tab="edit">Edit Cat</button>
+          <button class="tab right-tab" data-right-tab="inventory">Inventory</button>
+        </div>
+
+        <section id="right_preview" class="right-panel-content active panel-scroll">
+          <h2><img class="icon" src="/webui/icons/preview.svg" alt="" /> Preview</h2>
+          <div id="catPreview" class="preview">Select a cat to view details.</div>
+        </section>
+
+        <section id="right_edit" class="right-panel-content panel-scroll">
+          <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Edit Selected Cat</h2>
+          <div class="editor-grid">
+            <label>ID <input id="cat_id" type="number" disabled /></label>
+            <label>Owned <select id="cat_owned"><option value="1">Yes</option><option value="0">No</option></select></label>
+            <label>Base <input id="cat_base" type="number" min="1" /></label>
+            <label>Plus <input id="cat_plus" type="number" min="0" /></label>
+            <label>Form <input id="cat_form" type="number" min="0" max="3" /></label>
+            <label>Unlocked Forms <input id="cat_unlocked_forms" type="number" min="0" max="4" /></label>
+            <label>Fourth <input id="cat_fourth" type="number" min="0" /></label>
+          </div>
+          <button id="applyCatEditBtn">Apply Cat Edit</button>
+          <p class="helper-text">Tip: double-click Base/Plus/Form cells in the table for inline editing.</p>
+        </section>
+
+        <section id="right_inventory" class="right-panel-content panel-scroll">
+          <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Inventory</h2>
+          <div class="tabs sticky-subtabs" role="tablist" aria-label="Inventory categories">
+            <button class="tab inventory-tab active" data-tab="catseyes"><img class="icon" src="/webui/icons/catseye.svg" alt="" /> Catseyes</button>
+            <button class="tab inventory-tab" data-tab="catfruit"><img class="icon" src="/webui/icons/catfruit.svg" alt="" /> Catfruit</button>
+            <button class="tab inventory-tab" data-tab="materials"><img class="icon" src="/webui/icons/material.svg" alt="" /> Base Mats</button>
+          </div>
+          <div id="inventoryList" class="inventory"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer id="saveBar" class="save-bar">
+      <span id="dirtyState">No unsaved changes</span>
+      <div class="save-bar-actions">
+        <button id="revertBtn">Revert</button>
+        <button id="saveBarSaveBtn">Save As</button>
+      </div>
+    </footer>
+    <footer id="statusBar">Ready.</footer>
+  </div>
+  <div id="toastContainer" class="toast-container"></div>
+  <script src="/webui/app.js"></script>
+</body>
+</html>
