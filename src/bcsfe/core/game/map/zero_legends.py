@@ -72,7 +72,7 @@ class Chapter:
         else:
             self.clear_progress = max(self.clear_progress, index + 1)
         self.stages[index].clear_stage(clear_amount, ensure_cleared_only)
-        self.chapter_unlock_state = 3
+        self.unlock_state = 3
         if index == self.total_stages - 1:
             return True
         return False
@@ -150,14 +150,14 @@ class ChaptersStars:
         )
         if finished:
             if star + 1 < len(self.chapters):
-                self.chapters[star + 1].chapter_unlock_state = 1
+                self.chapters[star + 1].unlock_state = 1
         return finished
 
     def unclear_stage(self, star: int, stage: int) -> bool:
         finished = self.chapters[star].unclear_stage(stage)
         if finished and star + 1 < len(self.chapters):
             for chapter in self.chapters[star + 1 :]:
-                chapter.chapter_unlock_state = 0
+                chapter.unlock_state = 0
         return finished
 
     @staticmethod
@@ -218,7 +218,7 @@ class ZeroLegendsChapters:
             star, stage, clear_amount, overwrite_clear_progress, ensure_cleared_only
         )
         if finished and map + 1 < len(self.chapters):
-            self.chapters[map + 1].chapters[0].chapter_unlock_state = 1
+            self.chapters[map + 1].chapters[0].unlock_state = 1
 
         return finished
 
@@ -227,7 +227,7 @@ class ZeroLegendsChapters:
         finished = self.chapters[map].unclear_stage(star, stage)
         if finished and map + 1 < len(self.chapters) and star == 0:
             for chapter in self.chapters[map + 1].chapters:
-                chapter.chapter_unlock_state = 0
+                chapter.unlock_state = 0
 
         return finished
 
@@ -274,8 +274,14 @@ class ZeroLegendsChapters:
 
         if diff >= 0:
             for _ in range(diff + 1):
-                stages = [Stage(0)] * self.get_total_stages(0, 0)
-                chapters = [Chapter(0, 0, 0, stages)] * self.get_total_stars(0)
+                total_stages = self.get_total_stages(0, 0)
+                total_stars = self.get_total_stars(0)
+                chapters: list[Chapter] = []
+                for _ in range(total_stars):
+                    stages = [Stage(0) for _ in range(total_stages)]
+                    chapter = Chapter(0, 0, 0, stages)
+                    chapter.total_stages = total_stages
+                    chapters.append(chapter)
                 chapters_stars = ChaptersStars(0, chapters)
                 self.chapters.append(chapters_stars)
 
