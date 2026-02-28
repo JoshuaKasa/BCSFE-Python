@@ -50,6 +50,7 @@
             <label>Leadership <input id="res_leadership" type="number" /></label>
           </div>
           <button id="applyResourcesBtn">Apply Resource Edits</button>
+          <button id="maxGamatotoBtn">Max Gamatoto</button>
         </section>
 
         <section id="left_presets" class="left-panel-content panel-scroll">
@@ -135,6 +136,7 @@
           <button class="tab right-tab active" data-right-tab="preview">Preview</button>
           <button class="tab right-tab" data-right-tab="edit">Edit Cat</button>
           <button class="tab right-tab" data-right-tab="inventory">Inventory</button>
+          <button class="tab right-tab" data-right-tab="trophies">Trophies</button>
         </div>
 
         <section id="right_preview" class="right-panel-content active panel-scroll">
@@ -165,6 +167,11 @@
             <button class="tab inventory-tab" data-tab="materials"><img class="icon" src="/webui/icons/material.svg" alt="" /> Base Mats</button>
           </div>
           <div id="inventoryList" class="inventory"></div>
+        </section>
+
+        <section id="right_trophies" class="right-panel-content panel-scroll">
+          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Trophies</h2>
+          <div id="trophiesList" class="inventory"></div>
         </section>
       </aside>
     </main>

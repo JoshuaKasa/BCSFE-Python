@@ -4,6 +4,7 @@ const state = {
   selectedCat: null,
   inventoryTab: "catseyes",
   inventory: { catseyes: [], catfruit: [], materials: [] },
+  trophies: [],
   leftTab: "summary",
   rightTab: "preview",
   currentPath: null,
@@ -60,6 +61,7 @@ function renderSummary(summary) {
     ["Rare", summary.rare_tickets],
     ["Platinum", summary.platinum_tickets],
     ["Legend", summary.legend_tickets],
+    ["Trophies", `${summary.trophies_owned ?? 0}/${summary.trophies_total ?? 0}`],
   ];
   for (const [k, v] of entries) {
     const row = document.createElement("div");
@@ -85,14 +87,10 @@ function renderSummary(summary) {
 
 function presetButtons() {
   const map = [
-    ["1", "Safer max"],
-    ["2", "Broad max"],
-    ["3", "Hard-cap max (risky)"],
-    ["4", "Risky currencies"],
+    ["10", "Human-max progression (recommended)"],
+    ["9", "Full legit max (keep current treasures)"],
+    ["1", "Safer max resources"],
     ["5", "Starter boost"],
-    ["7", "Full account (very risky)"],
-    ["8", "Legit-max progression"],
-    ["9", "Full legit max progression"],
   ];
   const root = $("presets");
   root.innerHTML = "";
@@ -106,6 +104,7 @@ function presetButtons() {
         renderSummary(out.summary);
         await refreshCats();
         await refreshInventory();
+        await refreshTrophies();
         markDirty(true);
         setStatus(out.failed?.length ? `Preset ${id} applied (some failures)` : `Preset ${id} applied`);
       } catch (e) {
@@ -221,6 +220,48 @@ function renderInventory() {
       `;
     }
     root.appendChild(div);
+  }
+}
+
+function renderTrophies() {
+  const root = $("trophiesList");
+  if (!root) return;
+  root.innerHTML = "";
+  for (const row of state.trophies || []) {
+    const div = document.createElement("div");
+    div.className = "inv-row";
+    const left = document.createElement("span");
+    left.className = "inv-left";
+    left.textContent = `${row.name} (#${row.id})${row.description ? ` - ${row.description}` : ""}`;
+
+    const right = document.createElement("span");
+    right.className = "inv-edit";
+    const status = document.createElement("span");
+    status.textContent = row.owned ? "Owned" : "Missing";
+    const btn = document.createElement("button");
+    btn.className = "inv-save-btn";
+    btn.textContent = row.owned ? "Remove" : "Add";
+    btn.onclick = () => applyTrophyEdit(Number(row.id), !row.owned);
+    right.appendChild(status);
+    right.appendChild(btn);
+
+    div.appendChild(left);
+    div.appendChild(right);
+    root.appendChild(div);
+  }
+}
+
+async function applyTrophyEdit(id, owned) {
+  try {
+    setStatus(`${owned ? "Adding" : "Removing"} trophy ${id}...`);
+    const out = await api("/api/trophies/update", "POST", { id, owned });
+    state.trophies = out.trophies || [];
+    renderSummary(out.summary);
+    renderTrophies();
+    markDirty(true);
+    setStatus(`${owned ? "Added" : "Removed"} trophy ${id}.`);
+  } catch (e) {
+    setStatus(`Trophy edit error: ${e.message}`);
   }
 }
 
@@ -340,6 +381,12 @@ async function refreshInventory() {
   renderInventory();
 }
 
+async function refreshTrophies() {
+  const out = await api("/api/trophies");
+  state.trophies = out.trophies || [];
+  renderTrophies();
+}
+
 async function doCatAction(action) {
   if (!state.selectedIds.size) {
     setStatus("Select one or more cats first.");
@@ -365,6 +412,7 @@ async function loadSave() {
     renderSummary(out.summary);
     await refreshCats();
     await refreshInventory();
+    await refreshTrophies();
     markDirty(false);
     setStatus("Save loaded.");
   } catch (e) {
@@ -406,6 +454,21 @@ async function applyResourceEdits() {
     await refreshCats();
   } catch (e) {
     setStatus(`Resource edit error: ${e.message}`);
+  }
+}
+
+async function applyOperation(key, label) {
+  try {
+    setStatus(`Applying ${label}...`);
+    const out = await api("/api/op", "POST", { key });
+    renderSummary(out.summary);
+    await refreshCats();
+    await refreshInventory();
+    await refreshTrophies();
+    markDirty(true);
+    setStatus(`${label} applied.`);
+  } catch (e) {
+    setStatus(`${label} error: ${e.message}`);
   }
 }
 
@@ -457,6 +520,7 @@ async function revertCurrent() {
     renderSummary(out.summary);
     await refreshCats();
     await refreshInventory();
+    await refreshTrophies();
     markDirty(false);
     setStatus("Reverted to last loaded save.");
   } catch (e) {
@@ -529,8 +593,11 @@ function bindEvents() {
   $("loadBtn").onclick = loadSave;
   $("refreshBtn").onclick = async () => {
     await refreshStatus();
-    await refreshCats();
-    await refreshInventory();
+    if (state.currentPath) {
+      await refreshCats();
+      await refreshInventory();
+      await refreshTrophies();
+    }
     setStatus("Refreshed.");
   };
   $("saveBtn").onclick = saveAs;
@@ -538,6 +605,7 @@ function bindEvents() {
   $("revertBtn").onclick = revertCurrent;
   $("syncBtn").onclick = syncMyGamatoto;
   $("applyResourcesBtn").onclick = applyResourceEdits;
+  $("maxGamatotoBtn").onclick = () => applyOperation("max_gamatoto", "Max Gamatoto");
   $("applyCatEditBtn").onclick = applySelectedCatEdit;
   $("searchInput").oninput = refreshCats;
   $("filterSelect").onchange = refreshCats;
@@ -577,6 +645,11 @@ async function init() {
   activateInventoryTab(state.inventoryTab);
   markDirty(false);
   await refreshStatus();
+  if (state.currentPath) {
+    await refreshCats();
+    await refreshInventory();
+    await refreshTrophies();
+  }
 }
 
 init();

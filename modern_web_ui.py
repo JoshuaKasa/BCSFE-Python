@@ -121,6 +121,18 @@ def get_cat_name(cat: core.Cat) -> str:
 
 def summary(sf: core.SaveFile) -> dict[str, Any]:
     unlocked = sum(1 for c in sf.cats.cats if c.unlocked)
+    trophy_owned = 0
+    trophy_total = 0
+    try:
+        trophy_owned = len(getattr(sf.medals, "medal_data_1", []))
+        medal_names = core.core_data.get_medal_names(sf)
+        names = getattr(medal_names, "medal_names", None)
+        if isinstance(names, list):
+            trophy_total = sum(1 for row in names if isinstance(row, list) and len(row) > 0)
+        else:
+            trophy_total = trophy_owned
+    except Exception:
+        trophy_total = trophy_owned
     return {
         "path": str(state.loaded_path) if state.loaded_path else "",
         "inquiry_code": sf.inquiry_code,
@@ -136,6 +148,8 @@ def summary(sf: core.SaveFile) -> dict[str, Any]:
         "platinum_tickets": sf.platinum_tickets,
         "legend_tickets": sf.legend_tickets,
         "leadership": sf.leadership,
+        "trophies_owned": trophy_owned,
+        "trophies_total": trophy_total,
     }
 
 
@@ -213,6 +227,51 @@ def inventory_payload(sf: core.SaveFile) -> dict[str, Any]:
         pass
 
     return {"ok": True, "catseyes": catseyes, "catfruit": catfruit, "materials": materials}
+
+
+def trophies_payload(sf: core.SaveFile) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    owned = set(getattr(sf.medals, "medal_data_1", []))
+    value_map = getattr(sf.medals, "medal_data_2", {}) or {}
+
+    medal_names_list: list[list[str]] | None = None
+    try:
+        medal_names = core.core_data.get_medal_names(sf)
+        names = getattr(medal_names, "medal_names", None)
+        if isinstance(names, list):
+            medal_names_list = names
+    except Exception:
+        medal_names_list = None
+
+    if medal_names_list is not None:
+        for medal_id, row in enumerate(medal_names_list):
+            if not row:
+                continue
+            name = clean_name(row[0]) if row[0] else f"Trophy {medal_id}"
+            desc = row[1] if len(row) > 1 else ""
+            rows.append(
+                {
+                    "id": int(medal_id),
+                    "name": name,
+                    "description": str(desc),
+                    "owned": medal_id in owned,
+                    "value": int(value_map.get(medal_id, 0)),
+                }
+            )
+    else:
+        for medal_id in sorted(owned):
+            rows.append(
+                {
+                    "id": int(medal_id),
+                    "name": f"Trophy {medal_id}",
+                    "description": "",
+                    "owned": True,
+                    "value": int(value_map.get(medal_id, 0)),
+                }
+            )
+
+    rows.sort(key=lambda r: (not bool(r["owned"]), int(r["id"])))
+    return {"ok": True, "trophies": rows}
 
 
 @app.get("/")
@@ -357,6 +416,41 @@ def api_inventory():
     try:
         sf = ensure_loaded()
         return jsonify(inventory_payload(sf))
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.get("/api/trophies")
+def api_trophies():
+    try:
+        sf = ensure_loaded()
+        return jsonify(trophies_payload(sf))
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.post("/api/trophies/update")
+def api_trophies_update():
+    try:
+        sf = ensure_loaded()
+        payload = request.get_json(force=True)
+        medal_id = int(payload.get("id"))
+        owned = bool(payload.get("owned"))
+        if medal_id < 0:
+            raise RuntimeError(f"Invalid trophy id: {medal_id}")
+
+        if owned:
+            sf.medals.add_medal(medal_id)
+        else:
+            sf.medals.remove_medal(medal_id)
+
+        return jsonify(
+            {
+                "ok": True,
+                "summary": summary(sf),
+                "trophies": trophies_payload(sf)["trophies"],
+            }
+        )
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 400
 

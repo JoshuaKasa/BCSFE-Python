@@ -14,9 +14,16 @@ if str(SRC_DIR) not in sys.path:
 from bcsfe import core  # noqa: E402
 from bcsfe.cli.edits import max_all  # noqa: E402
 from bcsfe.cli.save_management import SaveManagement  # noqa: E402
+from bcsfe.core.game.gamoto.gamatoto import Helper, Helpers  # noqa: E402
 
 
 Operation = Callable[[core.SaveFile], None]
+
+
+def top_up_catfood(save_file: core.SaveFile, target: int = 1500) -> None:
+    """Give a conservative catfood amount for realistic progression presets."""
+    if save_file.catfood < target:
+        save_file.catfood = target
 
 
 def safe_max_catamins(save_file: core.SaveFile) -> None:
@@ -63,6 +70,74 @@ def clear_story_and_treasures(save_file: core.SaveFile) -> None:
             stage.itf_timed_score = timed_score
 
 
+def clear_story_only(save_file: core.SaveFile) -> None:
+    clear_amount = max(
+        1, core.core_data.max_value_manager.get(core.MaxValueType.STAGE_CLEAR_COUNT)
+    )
+    for chapter in save_file.story.chapters:
+        chapter.progress = max(chapter.progress, 48)
+        for idx, stage in enumerate(chapter.stages):
+            if idx < 48:
+                stage.clear_times = clear_amount
+
+
+def clear_story_superior_treasures(save_file: core.SaveFile) -> None:
+    """Human-achievable story cap: all clear + all Superior treasures.
+
+    Superior is the top in-game treasure tier (Inferior=1, Normal=2, Superior=3).
+    """
+    clear_amount = max(
+        1, core.core_data.max_value_manager.get(core.MaxValueType.STAGE_CLEAR_COUNT)
+    )
+    superior_treasure_value = 3
+    for chapter in save_file.story.chapters:
+        chapter.progress = max(chapter.progress, 48)
+        for idx, stage in enumerate(chapter.stages):
+            if idx < 48:
+                stage.clear_times = clear_amount
+            if idx < 49:
+                stage.treasure = superior_treasure_value
+
+
+def max_cat_talents(save_file: core.SaveFile) -> None:
+    talent_data = save_file.cats.read_talent_data(save_file)
+    if talent_data is None:
+        return
+    for cat in save_file.cats.cats:
+        if cat.talents is None:
+            continue
+        data = talent_data.get_cat_talents(cat)
+        if data is None:
+            continue
+        _talent_names, max_levels, _current_levels, ids = data
+        for i, talent_id in enumerate(ids):
+            talent = cat.get_talent_from_id(talent_id)
+            if talent is None:
+                continue
+            talent.level = max_levels[i]
+
+
+def max_special_skills(save_file: core.SaveFile) -> None:
+    """Max support/base upgrades (worker, wallet, research, cannon stats, etc.)."""
+    ability_data = core.core_data.get_ability_data(save_file)
+    if ability_data.ability_data is None:
+        return
+
+    for skill_id in range(len(save_file.special_skills.get_valid_skills())):
+        ability = ability_data.get_ability_data_item(skill_id)
+        if ability is None:
+            continue
+
+        max_base = max(0, int(ability.max_base_level) - 1)
+        max_plus = max(0, int(ability.max_plus_level))
+        save_file.special_skills.set_upgrade(
+            skill_id,
+            core.Upgrade(max_base, max_plus),
+            max_base=max_base,
+            max_plus=max_plus,
+        )
+
+
 def _clear_chapters_like(chapters_obj: object) -> None:
     chapters = getattr(chapters_obj, "chapters", None)
     if not isinstance(chapters, list):
@@ -87,15 +162,16 @@ def _clear_chapters_like(chapters_obj: object) -> None:
             if hasattr(chapter, "clear_progress"):
                 chapter.clear_progress = len(stages)
             if hasattr(chapter, "chapter_unlock_state"):
-                chapter.chapter_unlock_state = max(
-                    1, int(getattr(chapter, "chapter_unlock_state", 0) or 0)
-                )
+                chapter.chapter_unlock_state = 3 if stages else 0
             if hasattr(chapter, "unlock_state"):
-                chapter.unlock_state = max(1, int(getattr(chapter, "unlock_state", 0) or 0))
+                chapter.unlock_state = 3 if stages else 0
+            # Reset chapter selection pointers to a safe visible index. For some map types
+            # (notably Zero Legends), forcing these to the last raw stage can point at
+            # hidden/internal entries and crash when loading a stage.
             if hasattr(chapter, "selected_stage"):
-                chapter.selected_stage = max(len(stages) - 1, 0)
+                chapter.selected_stage = 0 if stages else 0
             if hasattr(chapter, "current_stage"):
-                chapter.current_stage = max(len(stages) - 1, 0)
+                chapter.current_stage = 0 if stages else 0
 
 
 def clear_all_maps(save_file: core.SaveFile) -> None:
@@ -142,7 +218,37 @@ def clear_all_maps(save_file: core.SaveFile) -> None:
             for chapter in chapter_stars.chapters:
                 for stage in chapter.stages:
                     stage.clear_times = max(1, int(getattr(stage, "clear_times", 0) or 0))
-                chapter.current_stage = max(len(chapter.stages) - 1, 0)
+                chapter.current_stage = 0 if chapter.stages else 0
+
+
+def max_gamatoto(save_file: core.SaveFile) -> None:
+    gamatoto_levels = core.core_data.get_gamatoto_levels(save_file)
+    max_level = gamatoto_levels.get_max_level()
+    if max_level is not None:
+        xp = gamatoto_levels.get_xp_from_level(max_level)
+        if xp is None:
+            level_data = gamatoto_levels.get_level(max_level)
+            if level_data is not None and level_data.xp_needed != -1:
+                xp = level_data.xp_needed
+            else:
+                xp = 0
+        save_file.gamatoto.xp = max(0, int(xp))
+
+    total_helpers = gamatoto_levels.get_total_helpers()
+    members_name = core.core_data.get_gamatoto_members_name(save_file)
+    members = members_name.members or []
+    if total_helpers is not None and members:
+        members_sorted = sorted(
+            members,
+            key=lambda m: (m.rarity, m.bonus, m.member_id),
+            reverse=True,
+        )
+        helper_ids = [member.member_id for member in members_sorted[: total_helpers]]
+        save_file.gamatoto.helpers = Helpers([Helper(helper_id) for helper_id in helper_ids])
+
+    save_file.gamatoto.remaining_seconds = 0.0
+    save_file.gamatoto.return_flag = True
+    save_file.ototo.engineers = core.Ototo.get_max_engineers(save_file)
 
 
 def max_catfruit(save_file: core.SaveFile) -> None:
@@ -175,9 +281,11 @@ def legit_max_cats(save_file: core.SaveFile) -> None:
 
     save_file.cats.true_form_cats(save_file, all_cats, force=False, set_current_forms=True)
     save_file.cats.fourth_form_cats(save_file, all_cats, force=False, set_current_forms=True)
+    max_cat_talents(save_file)
 
 
 OPERATIONS: dict[str, tuple[str, Operation]] = {
+    "catfood_topup": ("Catfood top-up (1500)", top_up_catfood),
     "catfood": ("Catfood", max_all.max_catfood),
     "xp": ("XP", max_all.max_xp),
     "normal_tickets": ("Normal tickets", max_all.max_normal_tickets),
@@ -195,14 +303,61 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "treasure_chests": ("Treasure chests", safe_max_treasure_chests),
     "catfruit": ("Catfruit / evolution fruits", max_catfruit),
     "base_materials": ("Base materials", max_base_materials),
+    "special_skills_max": ("Max support/base upgrades", max_special_skills),
     "legit_max_cats": ("Legit-max all cats", legit_max_cats),
     "unlock_all_cats": ("Unlock all cats", unlock_all_cats),
+    "clear_story_only": ("Clear story (keep current treasures)", clear_story_only),
+    "clear_story_superior_treasures": (
+        "Clear story + Superior treasures (human max)",
+        clear_story_superior_treasures,
+    ),
     "clear_story_treasures": ("Clear story + max treasures", clear_story_and_treasures),
+    "max_gamatoto": ("Max Gamatoto (xp/helpers/return/engineers)", max_gamatoto),
     "clear_all_maps": ("Clear all map categories", clear_all_maps),
 }
 
 PRESETS: dict[str, list[str]] = {
-    # Recommended: avoid explicitly bannable currencies.
+    # Human-max progression preset.
+    "10": [
+        "catfood_topup",
+        "xp",
+        "normal_tickets",
+        "np",
+        "leadership",
+        "battle_items",
+        "catfruit",
+        "base_materials",
+        "catseyes",
+        "catamins",
+        "labyrinth_medals",
+        "treasure_chests",
+        "special_skills_max",
+        "legit_max_cats",
+        "clear_story_superior_treasures",
+        "max_gamatoto",
+        "clear_all_maps",
+    ],
+    # Strong but keeps current story treasures.
+    "9": [
+        "catfood_topup",
+        "xp",
+        "normal_tickets",
+        "np",
+        "leadership",
+        "battle_items",
+        "catseyes",
+        "catamins",
+        "catfruit",
+        "base_materials",
+        "labyrinth_medals",
+        "treasure_chests",
+        "special_skills_max",
+        "legit_max_cats",
+        "max_gamatoto",
+        "clear_story_only",
+        "clear_all_maps",
+    ],
+    # Simpler non-risky max items/resources.
     "1": [
         "xp",
         "normal_tickets",
@@ -214,61 +369,13 @@ PRESETS: dict[str, list[str]] = {
         "labyrinth_medals",
         "treasure_chests",
     ],
-    "2": [
-        "xp",
-        "np",
-        "leadership",
-        "battle_items",
-        "catseyes",
-        "catamins",
-        "labyrinth_medals",
-        "treasure_chests",
-        "normal_tickets",
-        "hundred_million_ticket",
-        "platinum_shards",
-    ],
-    # Risky: includes currencies explicitly warned as bannable in the repo.
-    "3": list(OPERATIONS.keys()),
-    "4": [
+    # Starter boost.
+    "5": [
         "catfood",
-        "rare_tickets",
-        "platinum_tickets",
-        "legend_tickets",
-    ],
-    "5": ["catfood", "xp", "np", "leadership", "battle_items"],
-    "7": list(OPERATIONS.keys()),
-    "8": [
         "xp",
         "np",
         "leadership",
         "battle_items",
-        "normal_tickets",
-        "catseyes",
-        "catamins",
-        "catfruit",
-        "base_materials",
-        "labyrinth_medals",
-        "treasure_chests",
-        "legit_max_cats",
-        "clear_story_treasures",
-        "clear_all_maps",
-    ],
-    # Alias for clarity: full progression-focused preset without risky currency edits.
-    "9": [
-        "xp",
-        "np",
-        "leadership",
-        "battle_items",
-        "normal_tickets",
-        "catseyes",
-        "catamins",
-        "catfruit",
-        "base_materials",
-        "labyrinth_medals",
-        "treasure_chests",
-        "legit_max_cats",
-        "clear_story_treasures",
-        "clear_all_maps",
     ],
 }
 
@@ -295,15 +402,11 @@ def parse_args() -> argparse.Namespace:
 def prompt_preset() -> list[str]:
     print()
     print("Choose account preset:")
-    print("1) Safer max (recommended)")
-    print("2) Broad max (still avoids direct rare/plat/legend ticket edits)")
-    print("3) Full hard-cap max (risky)")
-    print("4) Risky currencies only (catfood + rare/plat/legend)")
+    print("10) Human-max progression (recommended)")
+    print("9) Full legit max progression (keeps current story treasures)")
+    print("1) Safer max resources")
     print("5) Starter boost")
     print("6) Custom selection")
-    print("7) Full account (unlock cats + clear maps + all resources) [very risky]")
-    print("8) Legit-max progression (cats/forms/materials/maps, non-absurd levels)")
-    print("9) Full legit max progression (alias of 8)")
     choice = input("> ").strip()
     if choice in PRESETS:
         return PRESETS[choice]
