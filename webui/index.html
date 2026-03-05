@@ -9,171 +9,390 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><img class="icon" src="/webui/icons/cat.svg" alt="" /> Battle Cats Modern Save Editor</div>
-      <div class="top-actions">
-        <button id="loadBtn"><img class="icon" src="/webui/icons/folder.svg" alt="" /> Load</button>
-        <button id="saveBtn"><img class="icon" src="/webui/icons/save.svg" alt="" /> Save As</button>
-        <button id="refreshBtn"><img class="icon" src="/webui/icons/refresh.svg" alt="" /> Refresh</button>
-        <span id="pathLabel" class="path-label">No file selected</span>
-        <details id="advancedMenu" class="advanced-menu">
-          <summary>Advanced</summary>
-          <div class="advanced-menu-content">
-            <button id="syncBtn"><img class="icon" src="/webui/icons/sync.svg" alt="" /> Sync MyGamatoto</button>
-          </div>
-        </details>
+      <div class="top-row">
+        <div class="brand"><img class="icon" src="/webui/icons/cat.svg" alt="" /> Battle Cats Modern Save Editor</div>
+        <div class="top-actions">
+          <button id="undoBtn" class="top-action action-neutral" title="Undo last change"><img class="icon" src="/webui/icons/refresh.svg" alt="" /> Undo</button>
+          <button id="redoBtn" class="top-action action-neutral" title="Redo reverted change"><img class="icon" src="/webui/icons/refresh.svg" alt="" /> Redo</button>
+          <label class="check-inline"><input id="safeModeToggle" type="checkbox" checked /> Safe Mode</label>
+          <button id="loadBtn" class="top-action action-info" title="Load a save from file"><img class="icon" src="/webui/icons/folder.svg" alt="" /> Load</button>
+          <button id="saveBtn" class="top-action action-good" title="Save edited data to a new file"><img class="icon" src="/webui/icons/save.svg" alt="" /> Save As</button>
+          <button id="refreshBtn" class="top-action action-info" title="Reload current data from backend"><img class="icon" src="/webui/icons/refresh.svg" alt="" /> Refresh</button>
+          <button id="syncBtn" class="top-action action-warm" title="Refresh cat names from MyGamatoto"><img class="icon" src="/webui/icons/sync.svg" alt="" /> Sync Names</button>
+          <span id="pathLabel" class="path-label">No file selected</span>
+        </div>
       </div>
+      <nav class="page-nav" role="tablist" aria-label="Pages">
+        <button class="page-btn active" data-page="home">Home</button>
+        <button class="page-btn" data-page="transfer">Transfer</button>
+        <button class="page-btn" data-page="cats">Cats</button>
+        <button class="page-btn" data-page="inventory">Inventory</button>
+        <button class="page-btn" data-page="progress">Story</button>
+        <button class="page-btn" data-page="base">Base</button>
+        <button class="page-btn" data-page="gamatoto">Gamatoto</button>
+        <button class="page-btn" data-page="enemies">Enemy Guide</button>
+        <button class="page-btn" data-page="achievements">Achievements</button>
+        <button class="page-btn" data-page="tools">Tools</button>
+      </nav>
     </header>
 
-    <main class="layout">
-      <aside class="panel left-panel">
-        <div class="tabs panel-tabs sticky-tabs" role="tablist" aria-label="Left panel sections">
-          <button class="tab left-tab active" data-left-tab="summary">Summary</button>
-          <button class="tab left-tab" data-left-tab="resources">Resources</button>
-          <button class="tab left-tab" data-left-tab="presets">Presets</button>
-        </div>
-
-        <section id="left_summary" class="left-panel-content active panel-scroll">
-          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Account</h2>
-          <div id="summary" class="kv"></div>
-        </section>
-
-        <section id="left_resources" class="left-panel-content panel-scroll">
-          <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Quick Edit Resources</h2>
-          <div id="resourceEditor" class="editor-grid">
-            <label>Catfood <input id="res_catfood" type="number" /></label>
-            <label>XP <input id="res_xp" type="number" /></label>
-            <label>NP <input id="res_np" type="number" /></label>
-            <label>Normal Tickets <input id="res_normal_tickets" type="number" /></label>
-            <label>Rare Tickets <input id="res_rare_tickets" type="number" /></label>
-            <label>Platinum Tickets <input id="res_platinum_tickets" type="number" /></label>
-            <label>Legend Tickets <input id="res_legend_tickets" type="number" /></label>
-            <label>Leadership <input id="res_leadership" type="number" /></label>
-          </div>
-          <button id="applyResourcesBtn">Apply Resource Edits</button>
-          <button id="maxGamatotoBtn">Max Gamatoto</button>
-        </section>
-
-        <section id="left_presets" class="left-panel-content panel-scroll">
-          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Presets</h2>
-          <div id="presets" class="stack"></div>
-        </section>
-      </aside>
-
-      <section class="panel center-panel">
-        <div class="cats-toolbar sticky-toolbar">
-          <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Cats</h2>
-          <select id="filterSelect">
-            <option>All</option>
-            <option>Unlocked</option>
-            <option>Locked</option>
-          </select>
-          <input id="searchInput" placeholder="Search by name or ID..." />
-          <span id="selectionBadge" class="selection-badge">0 selected</span>
-        </div>
-
-        <div class="action-zone">
-          <details class="action-card quick-card" open>
-            <summary>Quick Actions (selected cats)</summary>
-            <div id="contextActions" class="context-actions">
-              <button data-action="unlock">Unlock</button>
-              <button data-action="true_form">True Form</button>
-              <button data-action="fourth_form">4th Form</button>
-              <button data-action="legit_max">Legit Max</button>
+    <main class="page-host">
+      <section id="page_home" class="page active">
+        <div class="home-grid">
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Account Summary</h2>
+            <div id="summary" class="kv"></div>
+          </section>
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Dashboard</h2>
+            <div id="dashboardCards" class="card-grid"></div>
+          </section>
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Quick Resources</h2>
+            <div id="resourceEditor" class="editor-grid">
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/Catfood.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Cat Food</span><input id="res_catfood" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_17_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> XP</span><input id="res_xp" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_07_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> NP</span><input id="res_np" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_20_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Normal Tickets</span><input id="res_normal_tickets" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_21_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Rare Tickets</span><input id="res_rare_tickets" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_29_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Platinum Tickets</span><input id="res_platinum_tickets" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_145_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Legend Tickets</span><input id="res_legend_tickets" type="number" /></label>
+              <label><span class="field-label"><img class="item-icon tiny" src="https://battlecats.miraheze.org/wiki/Special:FilePath/GatyaitemD_105_f.png" alt="" loading="lazy" referrerpolicy="no-referrer" /> Leadership</span><input id="res_leadership" type="number" /></label>
             </div>
-          </details>
-
-          <details class="action-card bulk-card">
-            <summary>Bulk Actions</summary>
-            <div class="bulk-panel">
-              <div class="bulk-head">
-                <label>Scope
-                  <select id="bulkScope">
-                    <option value="visible">Visible (filtered list)</option>
-                    <option value="all">All cats</option>
-                  </select>
-                </label>
-                <label class="check-inline"><input id="bulkOwnedOnly" type="checkbox" /> Owned only</label>
-              </div>
-              <div class="bulk-actions">
-                <button id="bulkUnlockBtn">Unlock</button>
-                <button id="bulkTrueFormBtn">True Forms</button>
-                <button id="bulkFourthFormBtn">4th Forms</button>
-                <button id="bulkLegitMaxBtn">Legit Max</button>
-              </div>
-              <div class="bulk-levels">
-                <label>Base <input id="bulkBase" type="number" min="1" placeholder="30" /></label>
-                <label>Plus <input id="bulkPlus" type="number" min="0" placeholder="10" /></label>
-                <label>Current Form <input id="bulkForm" type="number" min="0" max="3" placeholder="0-3" /></label>
-                <label>Unlocked Forms <input id="bulkUnlockedForms" type="number" min="0" max="4" placeholder="0-4" /></label>
-                <button id="bulkApplyLevelsBtn">Apply</button>
-              </div>
+            <div class="row-actions">
+              <button id="applyResourcesBtn" title="Apply resource numbers above">Apply Resource Edits</button>
+              <button id="maxGamatotoBtn" title="Set Gamatoto to max legal values">Max Gamatoto</button>
             </div>
-          </details>
-        </div>
-
-        <div class="table-wrap">
-          <table id="catsTable">
-            <thead>
-              <tr>
-                <th></th>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Owned</th>
-                <th>Base</th>
-                <th>Plus</th>
-                <th>Form</th>
-                <th>Forms</th>
-                <th>4th</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          </section>
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Presets</h2>
+            <div id="presets" class="stack"></div>
+          </section>
         </div>
       </section>
 
-      <aside class="panel right-panel">
-        <div class="tabs panel-tabs sticky-tabs" role="tablist" aria-label="Right panel sections">
-          <button class="tab right-tab active" data-right-tab="preview">Preview</button>
-          <button class="tab right-tab" data-right-tab="edit">Edit Cat</button>
-          <button class="tab right-tab" data-right-tab="inventory">Inventory</button>
-          <button class="tab right-tab" data-right-tab="trophies">Trophies</button>
+      <section id="page_transfer" class="page">
+        <div class="two-col-grid transfer-grid">
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/folder.svg" alt="" /> Get Save Data (Server -> PC)</h2>
+            <div class="muted transfer-note">Use your transfer + confirmation codes from the game to download your save and load it directly in this editor.</div>
+            <div class="editor-grid transfer-form-grid">
+              <label>Country
+                <select id="transferCountry">
+                  <option value="en">en</option>
+                  <option value="jp">jp</option>
+                  <option value="kr">kr</option>
+                  <option value="tw">tw</option>
+                </select>
+              </label>
+              <label>Game Version (optional)
+                <input id="transferGameVersion" type="text" placeholder="12.2.0" />
+              </label>
+              <label>Transfer Code
+                <input id="transferCodeInput" type="text" placeholder="Enter transfer code" />
+              </label>
+              <label>Confirmation Code
+                <input id="transferPinInput" type="text" placeholder="Enter confirmation code" />
+              </label>
+            </div>
+            <div class="row-actions">
+              <button id="transferDownloadBtn">Download + Load Save</button>
+            </div>
+            <div id="transferDownloadMeta" class="muted"></div>
+          </section>
+
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/save.svg" alt="" /> Upload Save (PC -> Server)</h2>
+            <div class="muted transfer-note">Upload the currently loaded/edited save and get new transfer credentials to use in game.</div>
+            <div class="row-actions">
+              <label class="check-inline"><input id="transferUploadManagedItems" type="checkbox" checked /> Upload managed items</label>
+            </div>
+            <div class="row-actions">
+              <button id="transferUploadBtn">Upload + Get Codes</button>
+            </div>
+            <div class="editor-grid transfer-output-grid">
+              <label>Transfer Code
+                <input id="transferOutCode" type="text" readonly />
+              </label>
+              <label>Confirmation Code
+                <input id="transferOutPin" type="text" readonly />
+              </label>
+            </div>
+            <div class="row-actions">
+              <button id="transferCopyCodeBtn">Copy Transfer Code</button>
+              <button id="transferCopyPinBtn">Copy Confirmation Code</button>
+              <button id="transferUseOutputBtn">Use These In Download</button>
+            </div>
+          </section>
         </div>
-
-        <section id="right_preview" class="right-panel-content active panel-scroll">
-          <h2><img class="icon" src="/webui/icons/preview.svg" alt="" /> Preview</h2>
-          <div id="catPreview" class="preview">Select a cat to view details.</div>
-        </section>
-
-        <section id="right_edit" class="right-panel-content panel-scroll">
-          <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Edit Selected Cat</h2>
-          <div class="editor-grid">
-            <label>ID <input id="cat_id" type="number" disabled /></label>
-            <label>Owned <select id="cat_owned"><option value="1">Yes</option><option value="0">No</option></select></label>
-            <label>Base <input id="cat_base" type="number" min="1" /></label>
-            <label>Plus <input id="cat_plus" type="number" min="0" /></label>
-            <label>Form <input id="cat_form" type="number" min="0" max="3" /></label>
-            <label>Unlocked Forms <input id="cat_unlocked_forms" type="number" min="0" max="4" /></label>
-            <label>Fourth <input id="cat_fourth" type="number" min="0" /></label>
+        <section class="panel transfer-history-panel">
+          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Transfer History</h2>
+          <div class="row-actions">
+            <button id="transferClearHistoryBtn">Clear Saved Codes</button>
           </div>
-          <button id="applyCatEditBtn">Apply Cat Edit</button>
-          <p class="helper-text">Tip: double-click Base/Plus/Form cells in the table for inline editing.</p>
+          <div id="transferHistoryList" class="list-box scroll-pane"></div>
         </section>
+      </section>
 
-        <section id="right_inventory" class="right-panel-content panel-scroll">
+      <section id="page_cats" class="page">
+        <div class="cats-grid">
+          <section class="panel">
+            <div class="cats-toolbar">
+              <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Cats</h2>
+              <select id="filterSelect">
+                <option>All</option>
+                <option>Unlocked</option>
+                <option>Locked</option>
+              </select>
+              <input id="searchInput" placeholder="Search by name or ID..." />
+              <span id="selectionBadge" class="selection-badge">0 selected</span>
+            </div>
+
+            <div class="action-zone">
+              <details class="action-card quick-actions-card" open>
+                <summary>Quick Actions (selected cats)</summary>
+                <div class="context-actions">
+                  <button data-action="unlock" title="Unlock selected cats">Unlock</button>
+                  <button data-action="true_form" title="Unlock and set selected cats to True Form when possible">True Forms</button>
+                  <button data-action="fourth_form" title="Unlock and set selected cats to 4th Form when possible">4th Forms</button>
+                  <button data-action="legit_max" title="Max selected cats with legal limits">Legit Max</button>
+                </div>
+              </details>
+
+              <details class="action-card bulk-card" open>
+                <summary>Bulk Actions</summary>
+                <div class="bulk-panel">
+                  <div class="bulk-intro">Apply one action to many cats. Preview + confirmation will still be shown.</div>
+                  <div class="bulk-head">
+                    <label>Scope
+                      <select id="bulkScope">
+                        <option value="visible">Visible (filtered list)</option>
+                        <option value="all">All cats</option>
+                      </select>
+                    </label>
+                    <label class="check-inline"><input id="bulkOwnedOnly" type="checkbox" /> Owned only</label>
+                  </div>
+                  <div class="bulk-actions">
+                    <button id="bulkUnlockBtn" title="Unlock all cats in the selected scope">Unlock</button>
+                    <button id="bulkTrueFormBtn" title="Apply true form unlock in selected scope">True Forms</button>
+                    <button id="bulkFourthFormBtn" title="Apply 4th form unlock in selected scope">4th Forms</button>
+                    <button id="bulkLegitMaxBtn" title="Set legal max base/plus/forms in selected scope">Legit Max</button>
+                  </div>
+                  <div class="bulk-levels">
+                    <label>Base <input id="bulkBase" type="number" min="1" placeholder="30" /></label>
+                    <label>Plus <input id="bulkPlus" type="number" min="0" placeholder="10" /></label>
+                    <label>Current Form <input id="bulkForm" type="number" min="0" max="3" placeholder="0-3" /></label>
+                    <label>Unlocked Forms <input id="bulkUnlockedForms" type="number" min="0" max="4" placeholder="0-4" /></label>
+                    <button id="bulkApplyLevelsBtn" title="Apply entered level/form values to selected scope">Apply</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <div class="table-wrap scroll-pane">
+              <table id="catsTable">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Owned</th>
+                    <th>Base</th>
+                    <th>Plus</th>
+                    <th>Form</th>
+                    <th>Forms</th>
+                    <th>4th</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/preview.svg" alt="" /> Preview</h2>
+            <div class="tabs preview-tabs" role="tablist" aria-label="Cat preview tabs">
+              <button class="tab preview-tab active" data-tab="stats">Stats</button>
+              <button class="tab preview-tab" data-tab="sprite">Sprite</button>
+            </div>
+            <div id="catPreviewStats" class="preview">Select a cat to view details.</div>
+            <div id="catPreviewSprite" class="preview hidden">
+              <div class="sprite-toolbar">
+                <label>Form
+                  <select id="catPreviewForm">
+                    <option value="0">Form 1</option>
+                    <option value="1">Form 2</option>
+                    <option value="2">Form 3</option>
+                    <option value="3">Form 4</option>
+                  </select>
+                </label>
+              </div>
+              <div class="sprite-stage"><img id="catSpriteImage" class="cat-sprite" src="" alt="Cat sprite preview" loading="lazy" /></div>
+            </div>
+            <h2><img class="icon" src="/webui/icons/cat.svg" alt="" /> Edit Selected Cat</h2>
+            <div class="editor-grid">
+              <label>ID <input id="cat_id" type="number" disabled /></label>
+              <label>Owned <select id="cat_owned"><option value="1">Yes</option><option value="0">No</option></select></label>
+              <label>Base <input id="cat_base" type="number" min="1" /></label>
+              <label>Plus <input id="cat_plus" type="number" min="0" /></label>
+              <label>Form <input id="cat_form" type="number" min="0" max="3" /></label>
+              <label>Unlocked Forms <input id="cat_unlocked_forms" type="number" min="0" max="4" /></label>
+              <label>Fourth <input id="cat_fourth" type="number" min="0" /></label>
+            </div>
+            <button id="applyCatEditBtn" title="Apply current cat values">Apply Cat Edit</button>
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Talents</h2>
+            <div id="catTalentsList" class="list-box compact-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page_inventory" class="page">
+        <section class="panel">
           <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Inventory</h2>
-          <div class="tabs sticky-subtabs" role="tablist" aria-label="Inventory categories">
-            <button class="tab inventory-tab active" data-tab="catseyes"><img class="icon" src="/webui/icons/catseye.svg" alt="" /> Catseyes</button>
-            <button class="tab inventory-tab" data-tab="catfruit"><img class="icon" src="/webui/icons/catfruit.svg" alt="" /> Catfruit</button>
-            <button class="tab inventory-tab" data-tab="materials"><img class="icon" src="/webui/icons/material.svg" alt="" /> Base Mats</button>
+          <div class="tabs" role="tablist" aria-label="Inventory categories">
+            <button class="tab inventory-tab active" data-tab="all">All</button>
+            <button class="tab inventory-tab" data-tab="battle_items">Battle Items</button>
+            <button class="tab inventory-tab" data-tab="catamins">Catamins</button>
+            <button class="tab inventory-tab" data-tab="catseyes">Catseyes</button>
+            <button class="tab inventory-tab" data-tab="catfruit">Catfruit</button>
+            <button class="tab inventory-tab" data-tab="materials">Base Mats</button>
           </div>
-          <div id="inventoryList" class="inventory"></div>
+          <div id="inventoryList" class="list-box scroll-pane"></div>
         </section>
+      </section>
 
-        <section id="right_trophies" class="right-panel-content panel-scroll">
-          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Trophies</h2>
-          <div id="trophiesList" class="inventory"></div>
+      <section id="page_progress" class="page">
+        <section class="panel">
+          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Story Progress</h2>
+          <div class="story-toolbar">
+            <button id="storySetAllSuperiorBtn" title="Set every story treasure to Superior">Set All Superior</button>
+            <button id="storySetAllClearedBtn" title="Clear all story stages with no treasure edits">Set All Cleared</button>
+            <button id="storyResetAllBtn" title="Reset all story clears and treasures">Reset All</button>
+          </div>
+          <div class="story-split">
+            <div class="story-main">
+              <div class="table-wrap">
+                <table id="storyTable">
+                  <thead>
+                    <tr><th>Chapter</th><th>Clears</th><th>Superior Treasures</th><th>Action</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="story-side">
+              <h2><img class="icon" src="/webui/icons/preview.svg" alt="" /> Snapshot</h2>
+              <div id="progressList" class="list-box compact-list"></div>
+            </div>
+          </div>
         </section>
-      </aside>
+      </section>
+
+      <section id="page_base" class="page">
+        <section class="panel">
+          <h2><img class="icon" src="/webui/icons/material.svg" alt="" /> Base Upgrades</h2>
+          <div id="baseUpgradeList" class="list-box scroll-pane"></div>
+          <div class="row-actions"><button id="maxBaseBtn" title="Max all base upgrades to legal limits">Max Base Upgrades</button></div>
+          <h2><img class="icon" src="/webui/icons/material.svg" alt="" /> Cat Base Cannons</h2>
+          <div id="baseCannonsList" class="list-box scroll-pane"></div>
+        </section>
+      </section>
+
+      <section id="page_gamatoto" class="page">
+        <div class="two-col-grid">
+          <section class="panel gamatoto-overview-panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Gamatoto Overview</h2>
+            <div class="editor-grid">
+              <label>Current Level <input id="gamatoto_level" type="number" min="1" /></label>
+              <label>XP <input id="gamatoto_xp" type="number" min="0" /></label>
+              <label>Remaining Seconds <input id="gamatoto_remaining_seconds" type="number" min="0" /></label>
+              <label>Destination ID <input id="gamatoto_dest_id" type="number" min="0" /></label>
+              <label>Recon Length <input id="gamatoto_recon_length" type="number" min="0" /></label>
+              <label>Skin <input id="gamatoto_skin" type="number" min="0" /></label>
+            </div>
+            <div class="row-actions">
+              <label class="check-inline"><input id="gamatoto_return_flag" type="checkbox" /> Return Flag</label>
+              <label class="check-inline"><input id="gamatoto_is_ad_present" type="checkbox" /> Ad Present</label>
+            </div>
+            <div class="row-actions">
+              <button id="applyGamatotoBtn" title="Apply Gamatoto values above">Apply Gamatoto Edit</button>
+              <button id="refreshGamatotoBtn" title="Reload Gamatoto data from save">Refresh</button>
+            </div>
+            <div id="gamatotoMeta" class="muted"></div>
+          </section>
+          <section class="panel gamatoto-helpers-panel">
+            <h2><img class="icon" src="/webui/icons/inventory.svg" alt="" /> Gamatoto Helpers</h2>
+            <div class="table-wrap">
+              <table id="gamatotoHelpersTable">
+                <thead>
+                  <tr><th>Slot</th><th>ID</th><th>Name</th><th>Rarity</th><th>Bonus</th><th>Action</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page_achievements" class="page">
+        <div class="two-col-grid">
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Trophies</h2>
+            <div id="trophiesList" class="list-box"></div>
+          </section>
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Encyclopedias</h2>
+            <div id="encyclopediasList" class="list-box"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page_enemies" class="page">
+        <div class="two-col-grid enemy-grid">
+          <section class="panel">
+            <div class="enemy-toolbar">
+              <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Enemy Guide</h2>
+              <select id="enemyFilterSelect">
+                <option>All</option>
+                <option>Unlocked</option>
+                <option>Missing</option>
+                <option>Valid</option>
+              </select>
+              <input id="enemySearchInput" type="search" placeholder="Search by enemy ID or name..." />
+              <div class="row-actions enemy-actions">
+                <button id="enemyUnlockVisibleBtn">Unlock Visible</button>
+                <button id="enemyClearVisibleBtn">Clear Visible</button>
+                <button id="enemyUnlockAllBtn">Unlock All</button>
+                <button id="enemyClearAllBtn">Clear All</button>
+              </div>
+            </div>
+            <div class="table-wrap scroll-pane">
+              <table id="enemyTable">
+                <thead>
+                  <tr><th>Icon</th><th>ID</th><th>Name</th><th>Status</th><th>Action</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="panel">
+            <h2><img class="icon" src="/webui/icons/preview.svg" alt="" /> Enemy Preview</h2>
+            <div id="enemyPreview" class="preview">Select an enemy to view details.</div>
+            <div class="row-actions">
+              <button id="enemyToggleSelectedBtn" title="Toggle selected enemy unlocked state">Toggle Selected</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="page_tools" class="page">
+        <section class="panel">
+          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Tools</h2>
+          <div class="row-actions"><button id="refreshValidationBtn">Refresh Validation Report</button></div>
+          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Validation</h2>
+          <div id="validationList" class="list-box scroll-pane"></div>
+        </section>
+      </section>
     </main>
 
     <footer id="saveBar" class="save-bar">
@@ -183,7 +402,7 @@
         <button id="saveBarSaveBtn">Save As</button>
       </div>
     </footer>
-    <footer id="statusBar">Ready.</footer>
+    <footer id="statusBar" aria-live="polite">Ready.</footer>
   </div>
   <div id="toastContainer" class="toast-container"></div>
   <script src="/webui/app.js"></script>

@@ -15,6 +15,7 @@ from bcsfe import core  # noqa: E402
 from bcsfe.cli.edits import max_all  # noqa: E402
 from bcsfe.cli.save_management import SaveManagement  # noqa: E402
 from bcsfe.core.game.gamoto.gamatoto import Helper, Helpers  # noqa: E402
+from bcsfe.core.game.gamoto import ototo as ototo_data  # noqa: E402
 
 
 Operation = Callable[[core.SaveFile], None]
@@ -268,6 +269,47 @@ def max_base_materials(save_file: core.SaveFile) -> None:
         material.amount = max_value
 
 
+def set_gold_tickets_200(save_file: core.SaveFile) -> None:
+    """Set Rare (gold) tickets to a moderate high value."""
+    save_file.rare_tickets = 200
+
+
+def max_cat_base_cannons(save_file: core.SaveFile) -> None:
+    """Max cannon development + part levels using in-game recipe limits."""
+    if getattr(save_file.ototo, "cannons", None) is None:
+        save_file.ototo.cannons = ototo_data.Cannons.init(save_file.game_version)
+    cannons = save_file.ototo.cannons
+    if cannons is None:
+        return
+
+    recipe = ototo_data.CastleRecipeUnlock(save_file)
+    recipe_rows = list(getattr(recipe, "level_part_recipe_unlocks", []) or [])
+    cannon_ids = sorted(
+        {
+            int(getattr(row, "cannon_id", 0))
+            for row in recipe_rows
+            if int(getattr(row, "cannon_id", 0)) >= 0
+        }
+    )
+
+    for cannon_id in cannon_ids:
+        cannon = cannons.cannons.get(cannon_id)
+        if cannon is None:
+            cannon = ototo_data.Cannon.init()
+            cannons.cannons[cannon_id] = cannon
+        cannon.development = 3
+        while len(cannon.levels) < 3:
+            cannon.levels.append(0)
+        for part_id in range(3):
+            max_level = recipe.get_max_level(cannon_id, part_id)
+            if max_level is None:
+                max_level = recipe.get_max_part_level(part_id)
+            cannon.levels[part_id] = max(0, int(max_level or 0))
+
+    if not cannons.selected_parts:
+        cannons.selected_parts = [[0, 0, 0]]
+
+
 def legit_max_cats(save_file: core.SaveFile) -> None:
     all_cats = list(save_file.cats.cats)
     for cat in all_cats:
@@ -303,7 +345,9 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "treasure_chests": ("Treasure chests", safe_max_treasure_chests),
     "catfruit": ("Catfruit / evolution fruits", max_catfruit),
     "base_materials": ("Base materials", max_base_materials),
+    "gold_tickets_200": ("Set gold (rare) tickets to 200", set_gold_tickets_200),
     "special_skills_max": ("Max support/base upgrades", max_special_skills),
+    "cat_base_cannons_max": ("Max cat base cannons + parts", max_cat_base_cannons),
     "legit_max_cats": ("Legit-max all cats", legit_max_cats),
     "unlock_all_cats": ("Unlock all cats", unlock_all_cats),
     "clear_story_only": ("Clear story (keep current treasures)", clear_story_only),
@@ -322,6 +366,7 @@ PRESETS: dict[str, list[str]] = {
         "catfood_topup",
         "xp",
         "normal_tickets",
+        "gold_tickets_200",
         "np",
         "leadership",
         "battle_items",
@@ -332,6 +377,7 @@ PRESETS: dict[str, list[str]] = {
         "labyrinth_medals",
         "treasure_chests",
         "special_skills_max",
+        "cat_base_cannons_max",
         "legit_max_cats",
         "clear_story_superior_treasures",
         "max_gamatoto",
@@ -342,6 +388,7 @@ PRESETS: dict[str, list[str]] = {
         "catfood_topup",
         "xp",
         "normal_tickets",
+        "gold_tickets_200",
         "np",
         "leadership",
         "battle_items",
@@ -352,6 +399,7 @@ PRESETS: dict[str, list[str]] = {
         "labyrinth_medals",
         "treasure_chests",
         "special_skills_max",
+        "cat_base_cannons_max",
         "legit_max_cats",
         "max_gamatoto",
         "clear_story_only",
