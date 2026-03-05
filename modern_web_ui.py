@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import sys
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from uuid import uuid4
 
 import requests
 from tkinter import filedialog
@@ -24,7 +26,8 @@ from bcsfe import core  # noqa: E402
 from bcsfe.cli.save_management import SaveManagement  # noqa: E402
 from bcsfe.core.game.gamoto.gamatoto import Helper as GamatotoHelper  # noqa: E402
 from bcsfe.core.game.gamoto import ototo as ototo_data  # noqa: E402
-from simple_max_account import OPERATIONS, PRESETS, resolve_input_path  # noqa: E402
+import simple_max_account as simple_max_account_module  # noqa: E402
+from simple_max_account import resolve_input_path  # noqa: E402
 
 
 def clean_name(text: str) -> str:
@@ -128,6 +131,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 INDEX_PATH = CACHE_DIR / "allcats_index.json"
 TRANSFER_CODES_PATH = CACHE_DIR / "transfer_codes.json"
 TRANSFER_HISTORY_LIMIT = 60
+TRANSFER_BACKUP_VERSION = 1
 
 PRESET_ALIASES: dict[str, str] = {
     "human_max": "10",
@@ -151,6 +155,63 @@ def resolve_preset_key(raw: str) -> str:
     return PRESET_ALIASES.get(key, key)
 
 
+def get_ops_and_presets() -> tuple[dict[str, tuple[str, Any]], dict[str, list[str]]]:
+    """Reload preset/operation tables so UI reflects latest local edits."""
+    try:
+        module = importlib.reload(simple_max_account_module)
+    except Exception:
+        module = simple_max_account_module
+    return module.OPERATIONS, module.PRESETS
+
+def transfer_storage_info() -> dict[str, str]:
+    downloads_dir = Path.home() / "Documents" / "bcsfe" / "saves" / "transfer_downloads"
+    return {
+        "history_path": str(TRANSFER_CODES_PATH),
+        "downloads_dir": str(downloads_dir),
+    }
+
+
+def _new_transfer_record_id() -> str:
+    stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d%H%M%S")
+    return f"{stamp}_{uuid4().hex[:10]}"
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on", "pending"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", "done", "uploaded"}:
+        return False
+    return default
+
+
+def normalize_transfer_record(raw: dict[str, Any]) -> dict[str, Any]:
+    kind = "upload" if str(raw.get("kind", "")).strip().lower() == "upload" else "download"
+    default_needs_upload = kind == "download"
+    now_ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return {
+        "id": str(raw.get("id") or _new_transfer_record_id()),
+        "timestamp": str(raw.get("timestamp") or now_ts),
+        "kind": kind,
+        "country": str(raw.get("country", "")).strip().lower(),
+        "game_version": str(raw.get("game_version", "")).strip(),
+        "transfer_code": str(raw.get("transfer_code", "")).strip(),
+        "confirmation_code": str(raw.get("confirmation_code", "")).strip(),
+        "path": str(raw.get("path", "")).strip(),
+        "inquiry_code": str(raw.get("inquiry_code", "")).strip(),
+        "note": str(raw.get("note", "")).strip(),
+        "needs_upload": _to_bool(raw.get("needs_upload"), default=default_needs_upload),
+        "uploaded_at": str(raw.get("uploaded_at", "")).strip(),
+        "uploaded_by": str(raw.get("uploaded_by", "")).strip(),
+    }
+
+
 def load_transfer_records() -> None:
     if not TRANSFER_CODES_PATH.exists():
         state.transfer_records = []
@@ -164,30 +225,115 @@ def load_transfer_records() -> None:
         for row in records:
             if not isinstance(row, dict):
                 continue
-            cleaned.append({str(k): row[k] for k in row.keys()})
+            cleaned.append(normalize_transfer_record(row))
         state.transfer_records = cleaned[:TRANSFER_HISTORY_LIMIT]
+        persist_transfer_records()
     except Exception:
         state.transfer_records = []
 
 
 def persist_transfer_records() -> None:
-    records = list(state.transfer_records or [])[:TRANSFER_HISTORY_LIMIT]
+    records = [normalize_transfer_record(row) for row in list(state.transfer_records or [])]
+    state.transfer_records = records[:TRANSFER_HISTORY_LIMIT]
     TRANSFER_CODES_PATH.write_text(
-        json.dumps(records, ensure_ascii=False, indent=2),
+        json.dumps(state.transfer_records, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
 def push_transfer_record(record: dict[str, Any]) -> dict[str, Any]:
     records = list(state.transfer_records or [])
-    entry = {
-        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        **record,
-    }
+    entry = normalize_transfer_record(
+        {
+            "id": _new_transfer_record_id(),
+            "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+            **record,
+        }
+    )
     records.insert(0, entry)
     state.transfer_records = records[:TRANSFER_HISTORY_LIMIT]
     persist_transfer_records()
     return entry
+
+
+def update_transfer_record(record_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    rid = str(record_id or "").strip()
+    if not rid:
+        raise RuntimeError("Transfer history record id is required.")
+    records = list(state.transfer_records or [])
+    for idx, current in enumerate(records):
+        if str(current.get("id", "")) != rid:
+            continue
+        next_record = dict(current)
+        editable_fields = {
+            "kind",
+            "country",
+            "game_version",
+            "transfer_code",
+            "confirmation_code",
+            "path",
+            "inquiry_code",
+            "note",
+            "needs_upload",
+            "uploaded_at",
+            "uploaded_by",
+        }
+        for key in editable_fields:
+            if key in patch:
+                next_record[key] = patch.get(key)
+        next_record["id"] = str(current.get("id", rid))
+        next_record["timestamp"] = str(current.get("timestamp", ""))
+        normalized = normalize_transfer_record(next_record)
+        records[idx] = normalized
+        state.transfer_records = records[:TRANSFER_HISTORY_LIMIT]
+        persist_transfer_records()
+        return normalized
+    raise RuntimeError("Transfer history record not found.")
+
+
+def delete_transfer_record(record_id: str) -> None:
+    rid = str(record_id or "").strip()
+    if not rid:
+        raise RuntimeError("Transfer history record id is required.")
+    records = list(state.transfer_records or [])
+    filtered = [row for row in records if str(row.get("id", "")) != rid]
+    if len(filtered) == len(records):
+        raise RuntimeError("Transfer history record not found.")
+    state.transfer_records = filtered[:TRANSFER_HISTORY_LIMIT]
+    persist_transfer_records()
+
+
+def mark_matching_downloads_uploaded(sf: core.SaveFile, upload_record_id: str) -> int:
+    records = list(state.transfer_records or [])
+    inquiry_code = str(getattr(sf, "inquiry_code", "") or "").strip()
+    loaded_path = str(state.loaded_path or "").strip()
+    uploaded_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    changed = 0
+    for row in records:
+        if str(row.get("id", "")) == str(upload_record_id):
+            continue
+        if row.get("kind") != "download" or not bool(row.get("needs_upload", False)):
+            continue
+        same_inquiry = bool(inquiry_code and str(row.get("inquiry_code", "")).strip() == inquiry_code)
+        same_path = bool(loaded_path and str(row.get("path", "")).strip() == loaded_path)
+        if not (same_inquiry or same_path):
+            continue
+        row["needs_upload"] = False
+        row["uploaded_at"] = uploaded_at
+        row["uploaded_by"] = str(upload_record_id)
+        changed += 1
+    if changed:
+        state.transfer_records = [normalize_transfer_record(row) for row in records][:TRANSFER_HISTORY_LIMIT]
+        persist_transfer_records()
+    return changed
+
+
+def build_transfer_backup_payload() -> dict[str, Any]:
+    return {
+        "version": TRANSFER_BACKUP_VERSION,
+        "exported_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "records": list(state.transfer_records or []),
+    }
 
 
 def parse_game_version(raw: Any, fallback: core.GameVersion) -> core.GameVersion:
@@ -1470,20 +1616,23 @@ def apply_bulk_changes(sf: core.SaveFile, payload: dict[str, Any]) -> int:
 
 
 def apply_preset_changes(sf: core.SaveFile, preset: str) -> tuple[list[str], list[str]]:
-    keys = PRESETS.get(resolve_preset_key(preset))
+    operations, presets = get_ops_and_presets()
+    keys = presets.get(resolve_preset_key(preset))
     if not keys:
         raise RuntimeError(f"Unknown preset: {preset}")
     failed: list[str] = []
     applied: list[str] = []
     for key in keys:
         try:
-            _, op = OPERATIONS[key]
+            if key not in operations:
+                failed.append(key)
+                continue
+            _, op = operations[key]
             op(sf)
             applied.append(key)
         except Exception:
             failed.append(key)
     return applied, failed
-
 
 @app.get("/")
 def index():
@@ -1619,7 +1768,13 @@ def api_pick_save_path():
 @app.get("/api/transfer/history")
 def api_transfer_history():
     try:
-        return jsonify({"ok": True, "records": list(state.transfer_records or [])})
+        return jsonify(
+            {
+                "ok": True,
+                "records": list(state.transfer_records or []),
+                "storage": transfer_storage_info(),
+            }
+        )
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 400
 
@@ -1629,7 +1784,62 @@ def api_transfer_clear():
     try:
         state.transfer_records = []
         persist_transfer_records()
-        return jsonify({"ok": True, "records": []})
+        return jsonify({"ok": True, "records": [], "storage": transfer_storage_info()})
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.post("/api/transfer/update")
+def api_transfer_update():
+    try:
+        payload = request.get_json(force=True)
+        record_id = str(payload.get("id", "")).strip()
+        patch = payload.get("patch", {})
+        if not isinstance(patch, dict):
+            raise RuntimeError("Patch must be an object.")
+        record = update_transfer_record(record_id, patch)
+        return jsonify(
+            {
+                "ok": True,
+                "record": record,
+                "records": list(state.transfer_records or []),
+                "storage": transfer_storage_info(),
+            }
+        )
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.post("/api/transfer/delete")
+def api_transfer_delete():
+    try:
+        payload = request.get_json(force=True)
+        record_id = str(payload.get("id", "")).strip()
+        delete_transfer_record(record_id)
+        return jsonify(
+            {
+                "ok": True,
+                "records": list(state.transfer_records or []),
+                "storage": transfer_storage_info(),
+            }
+        )
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.get("/api/transfer/backup")
+def api_transfer_backup():
+    try:
+        stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d_%H%M%S")
+        filename = f"transfer_history_backup_{stamp}.json"
+        return jsonify(
+            {
+                "ok": True,
+                "filename": filename,
+                "backup": build_transfer_backup_payload(),
+                "storage": transfer_storage_info(),
+            }
+        )
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 400
 
@@ -1690,6 +1900,7 @@ def api_transfer_download():
                 "confirmation_code": confirmation_code,
                 "path": str(out_path),
                 "inquiry_code": downloaded_save.inquiry_code,
+                "needs_upload": True,
             }
         )
         return jsonify(
@@ -1700,6 +1911,7 @@ def api_transfer_download():
                 "path": str(out_path),
                 "record": record,
                 "records": list(state.transfer_records or []),
+                "storage": transfer_storage_info(),
             }
         )
     except Exception as error:
@@ -1728,17 +1940,21 @@ def api_transfer_upload():
                 "confirmation_code": confirmation_code,
                 "path": str(state.loaded_path) if state.loaded_path else "",
                 "inquiry_code": sf.inquiry_code,
+                "needs_upload": False,
             }
         )
+        linked_count = mark_matching_downloads_uploaded(sf, str(record.get("id", "")))
         return jsonify(
             {
                 "ok": True,
                 "transfer_code": transfer_code,
                 "confirmation_code": confirmation_code,
                 "record": record,
+                "linked_downloads": linked_count,
                 "records": list(state.transfer_records or []),
                 "summary": summary(sf),
                 "history": history_state(),
+                "storage": transfer_storage_info(),
             }
         )
     except Exception as error:
@@ -2501,13 +2717,14 @@ def api_op():
         sf = ensure_loaded()
         payload = request.get_json(force=True)
         key = payload.get("key", "")
-        if key not in OPERATIONS:
+        operations, _ = get_ops_and_presets()
+        if key not in operations:
             raise RuntimeError(f"Unknown operation: {key}")
         risky_keys = {"clear_story_only", "clear_story_superior_treasures", "clear_story_treasures", "clear_all_maps"}
         allow_risky = bool(payload.get("allow_risky", False))
         if state.safe_mode and key in risky_keys and not allow_risky:
             raise RuntimeError("Safe Mode is enabled. Disable it or confirm risky edits.")
-        _, op = OPERATIONS[key]
+        _, op = operations[key]
         op(sf)
         push_history(f"op:{key}")
         return jsonify({"ok": True, "summary": summary(sf), "history": history_state()})
@@ -2521,11 +2738,12 @@ def api_op_preview():
         sf = ensure_loaded()
         payload = request.get_json(force=True)
         key = payload.get("key", "")
-        if key not in OPERATIONS:
+        operations, _ = get_ops_and_presets()
+        if key not in operations:
             raise RuntimeError(f"Unknown operation: {key}")
         before = clone_save(sf)
         preview = clone_save(sf)
-        _, op = OPERATIONS[key]
+        _, op = operations[key]
         op(preview)
         return jsonify({"ok": True, "diff": diff_payload(before, preview)})
     except Exception as error:
@@ -2538,7 +2756,8 @@ def api_preset():
         sf = ensure_loaded()
         payload = request.get_json(force=True)
         preset = resolve_preset_key(payload.get("preset", ""))
-        keys = PRESETS.get(preset) or []
+        _, presets = get_ops_and_presets()
+        keys = presets.get(preset) or []
         if not keys:
             raise RuntimeError(f"Unknown preset: {preset}")
         risky_keys = {"clear_story_only", "clear_story_superior_treasures", "clear_story_treasures", "clear_all_maps"}
@@ -2569,7 +2788,8 @@ def api_preset_preview():
         sf = ensure_loaded()
         payload = request.get_json(force=True)
         preset = resolve_preset_key(payload.get("preset", ""))
-        if preset not in PRESETS:
+        _, presets = get_ops_and_presets()
+        if preset not in presets:
             raise RuntimeError(f"Unknown preset: {preset}")
         before = clone_save(sf)
         preview = clone_save(sf)
@@ -2588,3 +2808,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+

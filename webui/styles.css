@@ -1159,11 +1159,54 @@ tr.owned {
 
 #page_transfer .transfer-history-actions {
   align-items: flex-start;
+  display: grid;
+  gap: 8px;
+  width: min(100%, 980px);
+}
+
+#page_transfer .transfer-storage {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+#page_transfer .transfer-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+#page_transfer .transfer-input-grid > label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+#page_transfer .transfer-row-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+#page_transfer .transfer-status-toggle {
+  align-self: end;
+  white-space: nowrap;
 }
 
 #page_transfer .transfer-code-readonly {
   width: 190px;
   min-width: 190px;
+}
+
+@media (max-width: 1280px) {
+  #page_transfer .transfer-input-grid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  #page_transfer .transfer-input-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 #page_home #resourceEditor {

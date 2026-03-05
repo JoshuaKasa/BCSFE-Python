@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 from pathlib import Path
 from typing import Callable
@@ -326,6 +327,28 @@ def legit_max_cats(save_file: core.SaveFile) -> None:
     max_cat_talents(save_file)
 
 
+def humanize_uber_legend_plus(save_file: core.SaveFile) -> None:
+    """Human-max tweak: keep max base, set Uber/Legend plus to weighted 1..30."""
+    unit_buy = save_file.cats.read_unitbuy(save_file)
+    if unit_buy is None:
+        return
+
+    # Battle Cats rarity ids: 4=Uber Rare, 5=Legend Rare.
+    target_rarities = {4, 5}
+
+    for cat in save_file.cats.cats:
+        if unit_buy.get_cat_rarity(cat.id) not in target_rarities:
+            continue
+
+        power_up = core.PowerUpHelper(cat, save_file)
+        power_up.max_upgrade()
+
+        # Bias toward smaller values while staying in the requested 1..30 range.
+        plus_roll = 1 + int((random.random() ** 2.2) * 29)
+        max_plus = max(0, int(power_up.get_max_possible_plus()))
+        cat.upgrade.plus = min(plus_roll, max_plus)
+
+
 OPERATIONS: dict[str, tuple[str, Operation]] = {
     "catfood_topup": ("Catfood top-up (1500)", top_up_catfood),
     "catfood": ("Catfood", max_all.max_catfood),
@@ -349,6 +372,10 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "special_skills_max": ("Max support/base upgrades", max_special_skills),
     "cat_base_cannons_max": ("Max cat base cannons + parts", max_cat_base_cannons),
     "legit_max_cats": ("Legit-max all cats", legit_max_cats),
+    "humanize_uber_legend_plus": (
+        "Human max: Uber/Legend + levels randomized (1..30, low-biased)",
+        humanize_uber_legend_plus,
+    ),
     "unlock_all_cats": ("Unlock all cats", unlock_all_cats),
     "clear_story_only": ("Clear story (keep current treasures)", clear_story_only),
     "clear_story_superior_treasures": (
@@ -379,6 +406,7 @@ PRESETS: dict[str, list[str]] = {
         "special_skills_max",
         "cat_base_cannons_max",
         "legit_max_cats",
+        "humanize_uber_legend_plus",
         "clear_story_superior_treasures",
         "max_gamatoto",
         "clear_all_maps",
@@ -564,3 +592,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+

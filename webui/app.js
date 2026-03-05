@@ -16,6 +16,7 @@ const state = {
   baseCannons: [],
   baseSelectedParts: [0, 0, 0],
   transferHistory: [],
+  transferStorage: null,
   gamatoto: null,
   catTalents: [],
   enemies: [],
@@ -125,6 +126,15 @@ function normalizeName(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function wikiItemIconUrl(itemId) {
   const id = Number(itemId);
   if (!Number.isInteger(id) || id < 0) return null;
@@ -218,6 +228,7 @@ function setButtonTooltips() {
     transferCopyCodeBtn: "Copy the generated transfer code.",
     transferCopyPinBtn: "Copy the generated confirmation code.",
     transferUseOutputBtn: "Fill the download inputs with the generated upload codes.",
+    transferBackupBtn: "Download a JSON backup of transfer history records.",
     transferClearHistoryBtn: "Clear stored transfer code history.",
   };
   Object.entries(tooltips).forEach(([id, text]) => {
@@ -671,10 +682,24 @@ function renderEncyclopedias() {
   });
 }
 
+function renderTransferStorageInfo() {
+  const el = $("transferStorageInfo");
+  if (!el) return;
+  const storage = state.transferStorage || {};
+  const historyPath = storage.history_path || "";
+  const downloadsDir = storage.downloads_dir || "";
+  if (!historyPath && !downloadsDir) {
+    el.textContent = "";
+    return;
+  }
+  el.textContent = `History file: ${historyPath || "-"} | Downloaded saves: ${downloadsDir || "-"}`;
+}
+
 function renderTransferHistory() {
   const root = $("transferHistoryList");
   if (!root) return;
   root.innerHTML = "";
+  renderTransferStorageInfo();
   const rows = state.transferHistory || [];
   if (!rows.length) {
     root.innerHTML = `<div class="inv-row"><span class="muted">No saved transfer codes yet.</span></div>`;
@@ -685,34 +710,114 @@ function renderTransferHistory() {
     const div = document.createElement("div");
     div.className = "inv-row transfer-row";
     withReveal(div, idx);
-    const kind = row.kind === "upload" ? "Upload" : "Download";
-    const cc = row.country || "-";
-    const version = row.game_version || "-";
+
+    const rowId = String(row.id || "");
+    const kind = row.kind === "upload" ? "upload" : "download";
+    const kindLabel = kind === "upload" ? "Upload" : "Download";
+    const cc = row.country || "";
+    const version = row.game_version || "";
     const when = row.timestamp || "-";
     const transferCode = row.transfer_code || "";
     const confirmationCode = row.confirmation_code || "";
     const inquiry = row.inquiry_code || "-";
+    const pathValue = row.path || "";
+    const needsUpload = Boolean(row.needs_upload);
+    const note = row.note || "";
+    const statusClass = needsUpload ? "warn" : "on";
+    const statusText = needsUpload ? "Needs Upload" : "Uploaded";
+
     div.innerHTML = `
       <span class="inv-left transfer-left">
-        <strong>${kind}</strong>
-        <span class="muted">${when} | ${cc} | v${version}</span>
-        <span class="muted">IQ: ${inquiry}</span>
+        <strong>${kindLabel}</strong>
+        <span class="muted">${esc(when)} | ${esc(cc || "-")} | v${esc(version || "-")}</span>
+        <span class="muted">IQ: ${esc(inquiry)}</span>
+        <span class="muted">Path: ${esc(pathValue || "-")}</span>
+        <span class="badge ${statusClass}">${statusText}</span>
       </span>
       <span class="inv-edit transfer-history-actions">
-        <input class="inv-input transfer-code-readonly" type="text" readonly value="${transferCode}" />
-        <input class="inv-input transfer-code-readonly" type="text" readonly value="${confirmationCode}" />
-        <button class="inv-save-btn transfer-use-btn">Use</button>
+        <div class="transfer-input-grid">
+          <label>Kind
+            <select class="transfer-kind-input">
+              <option value="download"${kind === "download" ? " selected" : ""}>Download</option>
+              <option value="upload"${kind === "upload" ? " selected" : ""}>Upload</option>
+            </select>
+          </label>
+          <label>Country
+            <input class="inv-input transfer-country-input" type="text" value="${esc(cc)}" />
+          </label>
+          <label>Version
+            <input class="inv-input transfer-version-input" type="text" value="${esc(version)}" />
+          </label>
+          <label>Transfer Code
+            <input class="inv-input transfer-transfer-code-input" type="text" value="${esc(transferCode)}" />
+          </label>
+          <label>Confirmation Code
+            <input class="inv-input transfer-confirmation-code-input" type="text" value="${esc(confirmationCode)}" />
+          </label>
+          <label>Inquiry
+            <input class="inv-input transfer-inquiry-input" type="text" value="${esc(inquiry === "-" ? "" : inquiry)}" />
+          </label>
+          <label>Path
+            <input class="inv-input transfer-path-input" type="text" value="${esc(pathValue)}" />
+          </label>
+          <label>Note
+            <input class="inv-input transfer-note-input" type="text" value="${esc(note)}" placeholder="Optional note" />
+          </label>
+          <label class="check-inline transfer-status-toggle"><input class="transfer-needs-upload-input" type="checkbox"${needsUpload ? " checked" : ""} /> Needs upload</label>
+        </div>
+        <div class="row-actions transfer-row-actions">
+          <button class="inv-save-btn transfer-use-btn">Use</button>
+          <button class="inv-save-btn transfer-save-btn">Save</button>
+          <button class="inv-save-btn transfer-delete-btn">Delete</button>
+        </div>
       </span>
     `;
+
     const useBtn = div.querySelector(".transfer-use-btn");
+    const saveBtn = div.querySelector(".transfer-save-btn");
+    const deleteBtn = div.querySelector(".transfer-delete-btn");
+
     useBtn.onclick = () => {
-      if ($("transferCodeInput")) $("transferCodeInput").value = transferCode;
-      if ($("transferPinInput")) $("transferPinInput").value = confirmationCode;
-      if ($("transferCountry") && cc) $("transferCountry").value = String(cc).toLowerCase();
-      if ($("transferGameVersion") && version) $("transferGameVersion").value = version;
+      const liveCode = (div.querySelector(".transfer-transfer-code-input")?.value || transferCode || "").trim();
+      const livePin = (div.querySelector(".transfer-confirmation-code-input")?.value || confirmationCode || "").trim();
+      const liveCountry = (div.querySelector(".transfer-country-input")?.value || cc || "").trim().toLowerCase();
+      const liveVersion = (div.querySelector(".transfer-version-input")?.value || version || "").trim();
+      if ($("transferCodeInput")) $("transferCodeInput").value = liveCode;
+      if ($("transferPinInput")) $("transferPinInput").value = livePin;
+      if ($("transferCountry") && liveCountry) $("transferCountry").value = liveCountry;
+      if ($("transferGameVersion") && liveVersion) $("transferGameVersion").value = liveVersion;
       persistTransferFormState();
       setStatus("Transfer codes loaded into download fields.");
     };
+
+    saveBtn.onclick = withErr(async () => {
+      const patch = {
+        kind: div.querySelector(".transfer-kind-input")?.value || kind,
+        country: (div.querySelector(".transfer-country-input")?.value || "").trim().toLowerCase(),
+        game_version: (div.querySelector(".transfer-version-input")?.value || "").trim(),
+        transfer_code: (div.querySelector(".transfer-transfer-code-input")?.value || "").trim(),
+        confirmation_code: (div.querySelector(".transfer-confirmation-code-input")?.value || "").trim(),
+        inquiry_code: (div.querySelector(".transfer-inquiry-input")?.value || "").trim(),
+        path: (div.querySelector(".transfer-path-input")?.value || "").trim(),
+        note: (div.querySelector(".transfer-note-input")?.value || "").trim(),
+        needs_upload: Boolean(div.querySelector(".transfer-needs-upload-input")?.checked),
+      };
+      const out = await api("/api/transfer/update", "POST", { id: rowId, patch });
+      state.transferHistory = out.records || [];
+      state.transferStorage = out.storage || state.transferStorage;
+      renderTransferHistory();
+      setStatus("Transfer history entry updated.");
+    }, "Transfer history error");
+
+    deleteBtn.onclick = withErr(async () => {
+      if (!window.confirm("Delete this transfer history entry?")) return;
+      const out = await api("/api/transfer/delete", "POST", { id: rowId });
+      state.transferHistory = out.records || [];
+      state.transferStorage = out.storage || state.transferStorage;
+      renderTransferHistory();
+      setStatus("Transfer history entry deleted.");
+    }, "Transfer history error");
+
     root.appendChild(div);
   });
 }
@@ -1084,6 +1189,7 @@ async function refreshEncyclopedias() { state.encyclopedias = await api("/api/en
 async function refreshTransferHistory() {
   const out = await api("/api/transfer/history");
   state.transferHistory = out.records || [];
+  state.transferStorage = out.storage || null;
   renderTransferHistory();
 }
 
@@ -1330,6 +1436,7 @@ async function applyTransferDownload() {
   renderSummary(out.summary);
   setHistory(out.history || {});
   state.transferHistory = out.records || [];
+  state.transferStorage = out.storage || state.transferStorage;
   renderTransferHistory();
   if ($("transferDownloadMeta")) {
     $("transferDownloadMeta").textContent = `Downloaded and loaded: ${out.path || "-"}`;
@@ -1348,18 +1455,42 @@ async function applyTransferUpload() {
   renderSummary(out.summary);
   setHistory(out.history || {});
   state.transferHistory = out.records || [];
+  state.transferStorage = out.storage || state.transferStorage;
   renderTransferHistory();
   if ($("transferOutCode")) $("transferOutCode").value = out.transfer_code || "";
   if ($("transferOutPin")) $("transferOutPin").value = out.confirmation_code || "";
   persistTransferFormState();
-  setStatus("Upload complete. New transfer codes generated.");
+  const linked = Number(out.linked_downloads || 0);
+  setStatus(linked > 0 ? `Upload complete. Linked ${linked} downloaded account(s) as uploaded.` : "Upload complete. New transfer codes generated.");
 }
 
 async function clearTransferHistory() {
   const out = await api("/api/transfer/clear", "POST", {});
   state.transferHistory = out.records || [];
+  state.transferStorage = out.storage || state.transferStorage;
   renderTransferHistory();
   setStatus("Saved transfer code history cleared.");
+}
+
+async function downloadTransferHistoryBackup() {
+  const out = await api("/api/transfer/backup");
+  const backup = out.backup || { records: [] };
+  const filename = out.filename || `transfer_history_backup_${Date.now()}.json`;
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    window.URL.revokeObjectURL(url);
+  }
+  state.transferStorage = out.storage || state.transferStorage;
+  renderTransferStorageInfo();
+  setStatus(`Transfer history backup downloaded (${(backup.records || []).length} records).`);
 }
 
 async function copyTransferField(fieldId, label) {
@@ -1419,6 +1550,7 @@ function bindEvents() {
     persistTransferFormState();
     setStatus("Upload codes copied into download fields.");
   }, "Transfer error");
+  if ($("transferBackupBtn")) $("transferBackupBtn").onclick = withErr(downloadTransferHistoryBackup, "Transfer backup error");
   if ($("transferClearHistoryBtn")) $("transferClearHistoryBtn").onclick = withErr(async () => {
     if (!window.confirm("Clear all saved transfer codes history?")) return;
     await clearTransferHistory();
