@@ -256,6 +256,57 @@ def push_transfer_record(record: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def _transfer_record_matches_fallback(row: dict[str, Any], fallback: dict[str, Any]) -> bool:
+    checks = 0
+    comparable_fields = (
+        "timestamp",
+        "transfer_code",
+        "confirmation_code",
+        "kind",
+        "country",
+        "game_version",
+        "path",
+        "inquiry_code",
+    )
+    for field in comparable_fields:
+        expected = str(fallback.get(field, "") or "").strip()
+        if not expected:
+            continue
+        checks += 1
+        actual = str(row.get(field, "") or "").strip()
+        if field in {"kind", "country"}:
+            if actual.lower() != expected.lower():
+                return False
+        else:
+            if actual != expected:
+                return False
+    return checks > 0
+
+
+def resolve_transfer_record_id(record_id: str, fallback: dict[str, Any] | None = None) -> str:
+    rid = str(record_id or "").strip()
+    records = list(state.transfer_records or [])
+    if rid:
+        for row in records:
+            if str(row.get("id", "")).strip() == rid:
+                return rid
+        raise RuntimeError("Transfer history record not found.")
+
+    if isinstance(fallback, dict):
+        for idx, row in enumerate(records):
+            if not _transfer_record_matches_fallback(row, fallback):
+                continue
+            existing = str(row.get("id", "")).strip()
+            if existing:
+                return existing
+            row["id"] = _new_transfer_record_id()
+            state.transfer_records = [normalize_transfer_record(item) for item in records][:TRANSFER_HISTORY_LIMIT]
+            persist_transfer_records()
+            return str(state.transfer_records[idx].get("id", "")).strip()
+
+    raise RuntimeError("Transfer history record id is required.")
+
+
 def update_transfer_record(record_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     rid = str(record_id or "").strip()
     if not rid:
@@ -1794,6 +1845,8 @@ def api_transfer_update():
     try:
         payload = request.get_json(force=True)
         record_id = str(payload.get("id", "")).strip()
+        fallback = payload.get("fallback", {})
+        record_id = resolve_transfer_record_id(record_id, fallback if isinstance(fallback, dict) else None)
         patch = payload.get("patch", {})
         if not isinstance(patch, dict):
             raise RuntimeError("Patch must be an object.")
@@ -1815,6 +1868,8 @@ def api_transfer_delete():
     try:
         payload = request.get_json(force=True)
         record_id = str(payload.get("id", "")).strip()
+        fallback = payload.get("fallback", {})
+        record_id = resolve_transfer_record_id(record_id, fallback if isinstance(fallback, dict) else None)
         delete_transfer_record(record_id)
         return jsonify(
             {

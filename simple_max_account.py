@@ -328,7 +328,7 @@ def legit_max_cats(save_file: core.SaveFile) -> None:
 
 
 def humanize_uber_legend_plus(save_file: core.SaveFile) -> None:
-    """Human-max tweak: keep max base, set Uber/Legend plus to weighted 1..30."""
+    """Human-max tweak: keep max base, set Uber/Legend plus to weighted 1..20."""
     unit_buy = save_file.cats.read_unitbuy(save_file)
     if unit_buy is None:
         return
@@ -343,8 +343,8 @@ def humanize_uber_legend_plus(save_file: core.SaveFile) -> None:
         power_up = core.PowerUpHelper(cat, save_file)
         power_up.max_upgrade()
 
-        # Bias toward smaller values while staying in the requested 1..30 range.
-        plus_roll = 1 + int((random.random() ** 2.2) * 29)
+        # Bias toward smaller values while staying in the requested 1..20 range.
+        plus_roll = 1 + int((random.random() ** 2.2) * 19)
         max_plus = max(0, int(power_up.get_max_possible_plus()))
         cat.upgrade.plus = min(plus_roll, max_plus)
 
@@ -373,7 +373,7 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "cat_base_cannons_max": ("Max cat base cannons + parts", max_cat_base_cannons),
     "legit_max_cats": ("Legit-max all cats", legit_max_cats),
     "humanize_uber_legend_plus": (
-        "Human max: Uber/Legend + levels randomized (1..30, low-biased)",
+        "Human max: Uber/Legend + levels randomized (1..20, low-biased)",
         humanize_uber_legend_plus,
     ),
     "unlock_all_cats": ("Unlock all cats", unlock_all_cats),

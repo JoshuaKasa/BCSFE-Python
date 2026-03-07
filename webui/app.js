@@ -383,8 +383,16 @@ async function api(path, method = "GET", body = null) {
     opts.body = JSON.stringify(body);
   }
   const res = await fetch(path, opts);
-  const data = await res.json();
-  if (!res.ok || data.ok === false) throw new Error(data.error || `Request failed: ${path}`);
+  const raw = await res.text();
+  let data = null;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    const prefix = raw.slice(0, 80).replace(/\s+/g, " ").trim();
+    const restartHint = `Backend returned non-JSON (${res.status}). This usually means the server needs a restart after updates.`;
+    throw new Error(prefix ? `${restartHint} Response starts with: ${prefix}` : restartHint);
+  }
+  if (!res.ok || data.ok === false) throw new Error(data.error || `Request failed (${res.status}): ${path}`);
   return data;
 }
 
@@ -802,7 +810,8 @@ function renderTransferHistory() {
         note: (div.querySelector(".transfer-note-input")?.value || "").trim(),
         needs_upload: Boolean(div.querySelector(".transfer-needs-upload-input")?.checked),
       };
-      const out = await api("/api/transfer/update", "POST", { id: rowId, patch });
+      const fallback = { timestamp: when, transfer_code: transferCode, confirmation_code: confirmationCode, kind, country: cc, game_version: version, path: pathValue, inquiry_code: inquiry === "-" ? "" : inquiry };
+      const out = await api("/api/transfer/update", "POST", { id: rowId, fallback, patch });
       state.transferHistory = out.records || [];
       state.transferStorage = out.storage || state.transferStorage;
       renderTransferHistory();
@@ -811,7 +820,8 @@ function renderTransferHistory() {
 
     deleteBtn.onclick = withErr(async () => {
       if (!window.confirm("Delete this transfer history entry?")) return;
-      const out = await api("/api/transfer/delete", "POST", { id: rowId });
+      const fallback = { timestamp: when, transfer_code: transferCode, confirmation_code: confirmationCode, kind, country: cc, game_version: version, path: pathValue, inquiry_code: inquiry === "-" ? "" : inquiry };
+      const out = await api("/api/transfer/delete", "POST", { id: rowId, fallback });
       state.transferHistory = out.records || [];
       state.transferStorage = out.storage || state.transferStorage;
       renderTransferHistory();
