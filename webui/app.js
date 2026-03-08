@@ -7,7 +7,7 @@ const state = {
   lastSelectedIndex: null,
   previewTab: "stats",
   inventoryTab: "all",
-  inventory: { battle_items: [], catamins: [], catseyes: [], catfruit: [], materials: [] },
+  inventory: { battle_items: [], catamins: [], catseyes: [], catfruit: [], talent_orbs: [], materials: [] },
   trophies: [],
   dashboard: { cards: [] },
   progress: null,
@@ -35,11 +35,15 @@ const TRANSFER_FORM_STORAGE_KEY = "bcsfe_transfer_form_v1";
 
 const $ = (id) => document.getElementById(id);
 const ITEM_ICON_BASE = "https://battlecats.miraheze.org/wiki/Special:FilePath/";
+const ORB_ATTRIBUTE_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_attribute_14.3.png")}`;
+const ORB_EFFECT_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_effect_15.1.png")}`;
+const ORB_GRADE_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_grade.png")}`;
 const CATEGORY_FALLBACK_ICONS = {
   battle_items: "inventory",
   catamins: "inventory",
   catseyes: "catseye",
   catfruit: "catfruit",
+  talent_orbs: "material",
   materials: "material",
   enemies: "chart",
   trophies: "preset",
@@ -69,6 +73,16 @@ const ITEM_ID_ICON_ALIAS = {
   182: 33,
   183: 34,
   184: 40,
+};
+const CANNON_ICON_FILE_BY_NAME = {
+  "cat cannon": "Cannon_Icon.png",
+  "slow beam": "Slow_Beam_Cannon.jpg",
+  "iron wall": "Iron_Wall_Cannon.jpg",
+  thunderbolt: "Thunderbolt_Cannon.png",
+  waterblast: "Waterblast_Cannon.png",
+  "holy blast": "Holy_Cannon.png",
+  "breakerblast": "Breakerblast_Cannon.png",
+  curseblast: "Curseblast_Cannon.png",
 };
 const NAME_ITEM_ID_FALLBACK = {
   "speed up": 0,
@@ -143,6 +157,11 @@ function wikiItemIconUrl(itemId) {
   return `${ITEM_ICON_BASE}${encodeURIComponent(`GatyaitemD_${padded}_f.png`)}`;
 }
 
+function wikiFileIconUrl(fileName) {
+  if (!fileName) return null;
+  return `${ITEM_ICON_BASE}${encodeURIComponent(String(fileName))}`;
+}
+
 function fallbackIconForCategory(category) {
   return `/webui/icons/${CATEGORY_FALLBACK_ICONS[category] || "inventory"}.svg`;
 }
@@ -154,9 +173,21 @@ function resolveBaseUpgradeIconUrl(row) {
   return "/webui/icons/material.svg";
 }
 
+function resolveCannonIconUrl(cannon) {
+  const rawName = String(cannon?.name || "");
+  const normalized = normalizeName(rawName);
+  const direct = CANNON_ICON_FILE_BY_NAME[normalized];
+  if (direct) return wikiFileIconUrl(direct);
+  return wikiFileIconUrl("Cannon_Icon.png");
+}
+
 function resolveInventoryItemId(category, row) {
-  const explicit = Number(row?.item_id);
-  if (Number.isInteger(explicit) && explicit >= 0) return explicit;
+  if (category === "talent_orbs") return null;
+  const rawItemId = row?.item_id;
+  if (rawItemId !== null && rawItemId !== undefined && rawItemId !== "") {
+    const explicit = Number(rawItemId);
+    if (Number.isInteger(explicit) && explicit >= 0) return explicit;
+  }
   const byIndex = CATEGORY_ITEM_IDS[category];
   if (Array.isArray(byIndex) && Number.isInteger(Number(row?.index))) {
     const mapped = byIndex[Number(row.index)];
@@ -168,10 +199,41 @@ function resolveInventoryItemId(category, row) {
 }
 
 function resolveInventoryIconUrl(category, row) {
+  // Talent orbs should always prefer explicit orb icon URL, not gatyaitem mapping.
+  if (category === "talent_orbs" && row?.icon_url) return row.icon_url;
   const byId = wikiItemIconUrl(resolveInventoryItemId(category, row));
   if (byId) return byId;
   if (row?.icon_url) return row.icon_url;
   return fallbackIconForCategory(category);
+}
+
+function orbCellStyle(spriteUrl, col, row, cols, rows) {
+  const size = 18;
+  const x = Math.max(0, Number(col) || 0);
+  const y = Math.max(0, Number(row) || 0);
+  return `background-image:url('${spriteUrl}');background-size:${cols * size}px ${rows * size}px;background-position:-${x * size}px -${y * size}px;`;
+}
+
+function renderTalentOrbIcon(row) {
+  const targetIdRaw = Number(row?.target_id);
+  const effectIdRaw = Number(row?.effect_id);
+  const rankIdRaw = Number(row?.rank_id);
+  const targetId = Number.isInteger(targetIdRaw) ? targetIdRaw : 8;
+  const effectId = Number.isInteger(effectIdRaw) ? effectIdRaw : 0;
+  const rankId = Number.isInteger(rankIdRaw) ? rankIdRaw : 0;
+  const targetIndex = targetId >= 0 && targetId <= 10 ? targetId : 8;
+  const effectIndex = effectId >= 0 && effectId <= 29 ? effectId : 0;
+  const gradeIndex = rankId >= 0 && rankId <= 4 ? rankId : 0;
+  const attrCol = targetIndex % 6;
+  const attrRow = Math.floor(targetIndex / 6);
+  const effectCol = effectIndex % 5;
+  const effectRow = Math.floor(effectIndex / 5);
+  const gradeCol = gradeIndex % 3;
+  const gradeRow = Math.floor(gradeIndex / 3);
+  const attrStyle = orbCellStyle(ORB_ATTRIBUTE_SPRITE_URL, attrCol, attrRow, 6, 2);
+  const effectStyle = orbCellStyle(ORB_EFFECT_SPRITE_URL, effectCol, effectRow, 5, 6);
+  const gradeStyle = orbCellStyle(ORB_GRADE_SPRITE_URL, gradeCol, gradeRow, 3, 2);
+  return `<span class="orb-icon-composite" aria-hidden="true"><span class="orb-layer orb-attr" style="${attrStyle}"></span><span class="orb-layer orb-effect" style="${effectStyle}"></span><span class="orb-layer orb-grade" style="${gradeStyle}"></span></span>`;
 }
 
 function applyItemIconFallback(img, category) {
@@ -203,6 +265,14 @@ function bindStaticIconFallbacks() {
 
 function setButtonTooltips() {
   const tooltips = {
+    loadBtn: "Pick and load a save file from disk.",
+    saveBtn: "Save the current edited save to a new file path.",
+    saveBarSaveBtn: "Save the current edited save to a new file path.",
+    refreshBtn: "Reload summary and all editor sections from current in-memory save.",
+    revertBtn: "Discard unsaved changes and reload from current file path.",
+    undoBtn: "Undo the last applied edit.",
+    redoBtn: "Redo the last undone edit.",
+    syncBtn: "Refresh cat names using MyGamatoto naming data.",
     applyResourcesBtn: "Apply the resource values in this panel.",
     maxGamatotoBtn: "Apply max legal Gamatoto preset operation.",
     applyCatEditBtn: "Save the selected cat edits.",
@@ -231,9 +301,41 @@ function setButtonTooltips() {
     transferBackupBtn: "Download a JSON backup of transfer history records.",
     transferClearHistoryBtn: "Clear stored transfer code history.",
   };
+  const controlTooltips = {
+    safeModeToggle: "When enabled, risky operations require confirmation and can be blocked.",
+    bulkOwnedOnly: "If checked, bulk cat edits only affect currently owned cats.",
+    transferUploadManagedItems: "Include managed server items when uploading save data.",
+    gamatoto_return_flag: "Marks expedition as returned/ready state in save data.",
+    gamatoto_is_ad_present: "Controls the Gamatoto ad-present state flag in save data.",
+    transferCountry: "Country code used for transfer code endpoints (en/jp/kr/tw).",
+    transferGameVersion: "Optional game version override when downloading via transfer codes.",
+    transferCodeInput: "Transfer code used for server download.",
+    transferPinInput: "Confirmation code (PIN) paired with transfer code.",
+    transferOutCode: "Generated transfer code from last successful upload.",
+    transferOutPin: "Generated confirmation code from last successful upload.",
+    searchInput: "Filter cats by ID or name.",
+    filterSelect: "Filter cat list by owned status.",
+    enemySearchInput: "Filter enemies by ID or name.",
+    enemyFilterSelect: "Filter enemy guide list by state.",
+  };
   Object.entries(tooltips).forEach(([id, text]) => {
     const el = $(id);
     if (el) el.title = text;
+  });
+  Object.entries(controlTooltips).forEach(([id, text]) => {
+    const el = $(id);
+    if (!el) return;
+    el.title = text;
+    const label = el.closest("label");
+    if (label && !label.title) label.title = text;
+  });
+  document.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+    if (checkbox.title) return;
+    const label = checkbox.closest("label");
+    const labelText = label ? String(label.textContent || "").replace(/\s+/g, " ").trim() : "";
+    const tip = labelText ? `Toggle: ${labelText}` : "Toggle this option.";
+    checkbox.title = tip;
+    if (label && !label.title) label.title = tip;
   });
   document.querySelectorAll("[data-action]").forEach((btn) => {
     if (!btn.title) btn.title = btn.textContent.trim();
@@ -600,8 +702,9 @@ function renderBaseCannons() {
   const selected = Array.isArray(state.baseSelectedParts) ? state.baseSelectedParts : [0, 0, 0];
   const selectedRow = document.createElement("div");
   selectedRow.className = "inv-row";
+  const selectedIconUrl = resolveCannonIconUrl({ name: "Cat Cannon" });
   selectedRow.innerHTML = `
-    <span class="inv-left"><strong>Selected Parts Set</strong><span class="muted">Current global part IDs</span></span>
+    <span class="inv-left"><img class="item-icon" src="${selectedIconUrl}" alt="" loading="lazy" referrerpolicy="no-referrer" /> <strong>Selected Parts Set</strong><span class="muted">Current global part IDs</span></span>
     <span class="inv-edit">
       <input class="inv-input selected-part-input" type="number" min="0" value="${Number(selected[0] || 0)}" />
       <input class="inv-input selected-part-input" type="number" min="0" value="${Number(selected[1] || 0)}" />
@@ -609,6 +712,7 @@ function renderBaseCannons() {
       <button class="inv-save-btn">Apply</button>
     </span>
   `;
+  applyItemIconFallback(selectedRow.querySelector(".item-icon"), "materials");
   selectedRow.querySelector(".inv-save-btn").onclick = () => {
     const inputs = selectedRow.querySelectorAll(".selected-part-input");
     applyBaseSelectedPartsEdit(
@@ -624,8 +728,10 @@ function renderBaseCannons() {
     const div = document.createElement("div");
     div.className = "inv-row cannon-row";
     withReveal(div, idx);
+    const cannonIconUrl = resolveCannonIconUrl(cannon);
     div.innerHTML = `
       <span class="inv-left">
+        <img class="item-icon" src="${cannonIconUrl}" alt="" loading="lazy" referrerpolicy="no-referrer" />
         <strong>${cannon.name}</strong>
         <span class="muted">#${cannon.cannon_id} | Dev 0-${cannon.max_development ?? 3}</span>
       </span>
@@ -641,6 +747,7 @@ function renderBaseCannons() {
         <button class="inv-save-btn">Apply</button>
       </span>
     `;
+    applyItemIconFallback(div.querySelector(".item-icon"), "materials");
     div.querySelector(".inv-save-btn").onclick = () => {
       const devInput = div.querySelector(".cannon-dev-input");
       const levelInputs = [...div.querySelectorAll(".cannon-part-input")];
@@ -771,12 +878,12 @@ function renderTransferHistory() {
           <label>Note
             <input class="inv-input transfer-note-input" type="text" value="${esc(note)}" placeholder="Optional note" />
           </label>
-          <label class="check-inline transfer-status-toggle"><input class="transfer-needs-upload-input" type="checkbox"${needsUpload ? " checked" : ""} /> Needs upload</label>
+          <label class="check-inline transfer-status-toggle" title="Mark this record as pending upload completion."><input class="transfer-needs-upload-input" type="checkbox"${needsUpload ? " checked" : ""} title="Mark this record as pending upload completion." /> Needs upload</label>
         </div>
         <div class="row-actions transfer-row-actions">
-          <button class="inv-save-btn transfer-use-btn">Use</button>
-          <button class="inv-save-btn transfer-save-btn">Save</button>
-          <button class="inv-save-btn transfer-delete-btn">Delete</button>
+          <button class="inv-save-btn transfer-use-btn" title="Copy this record into the download fields above.">Use</button>
+          <button class="inv-save-btn transfer-save-btn" title="Save edits made to this history record.">Save</button>
+          <button class="inv-save-btn transfer-delete-btn" title="Delete this history record.">Delete</button>
         </div>
       </span>
     `;
@@ -961,8 +1068,17 @@ function renderSelectionBadge() {
 function renderPreview() {
   const c = state.selectedCat;
   const root = $("catPreviewStats");
+  const applyBtn = $("applyCatEditBtn");
   if (!c) {
     root.textContent = "Select a cat to view details.";
+    $("cat_id").value = "";
+    $("cat_owned").value = "0";
+    $("cat_base").value = "";
+    $("cat_plus").value = "";
+    $("cat_form").value = "";
+    $("cat_unlocked_forms").value = "";
+    $("cat_fourth").value = "";
+    if (applyBtn) applyBtn.disabled = true;
     const spriteForm = $("catPreviewForm");
     if (spriteForm) spriteForm.value = "0";
     updateCatSpritePreview();
@@ -988,6 +1104,7 @@ function renderPreview() {
   $("cat_form").value = c.form;
   $("cat_unlocked_forms").value = c.unlocked_forms;
   $("cat_fourth").value = c.fourth;
+  if (applyBtn) applyBtn.disabled = false;
   const spriteForm = $("catPreviewForm");
   if (spriteForm) spriteForm.value = String(Math.max(0, Math.min(3, Number(c.form) || 0)));
   updateCatSpritePreview();
@@ -1030,17 +1147,33 @@ function renderCatTalents() {
 function renderInventory() {
   const root = $("inventoryList");
   root.innerHTML = "";
-  const categories = ["battle_items", "catamins", "catseyes", "catfruit", "materials"];
+  const categories = ["battle_items", "catamins", "catseyes", "catfruit", "talent_orbs", "materials"];
   const labels = {
     battle_items: "Battle Items",
     catamins: "Catamins",
     catseyes: "Catseyes",
     catfruit: "Catfruit",
+    talent_orbs: "Talent Orbs",
     materials: "Base Mats",
   };
   const selected = state.inventoryTab === "all" ? categories : [state.inventoryTab];
   let rowIndex = 0;
   for (const category of selected) {
+    const rows = [...(state.inventory[category] || [])];
+    if (category === "talent_orbs") {
+      rows.sort((a, b) => {
+        const ga = String(a.group || "Unknown");
+        const gb = String(b.group || "Unknown");
+        if (ga !== gb) return ga.localeCompare(gb);
+        const ea = String(a.effect || "");
+        const eb = String(b.effect || "");
+        if (ea !== eb) return ea.localeCompare(eb);
+        const ra = String(a.rank || "");
+        const rb = String(b.rank || "");
+        if (ra !== rb) return ra.localeCompare(rb);
+        return Number(a.index || 0) - Number(b.index || 0);
+      });
+    }
     if (state.inventoryTab === "all") {
       const header = document.createElement("div");
       header.className = "inv-row inv-header";
@@ -1048,16 +1181,30 @@ function renderInventory() {
       header.innerHTML = `<span class="inv-left"><img class="item-icon section-icon" src="${fallbackIconForCategory(category)}" alt="" /> <strong>${labels[category]}</strong></span><span class="muted">${(state.inventory[category] || []).length} items</span>`;
       root.appendChild(header);
     }
-    for (const row of state.inventory[category] || []) {
+    let currentGroup = "";
+    for (const row of rows) {
+      if (category === "talent_orbs") {
+        const group = String(row.group || "Unknown");
+        if (group !== currentGroup) {
+          currentGroup = group;
+          const sub = document.createElement("div");
+          sub.className = "inv-row inv-header";
+          withReveal(sub, rowIndex++);
+          sub.innerHTML = `<span class="inv-left"><strong>${group}</strong></span><span class="muted">Talent Orb Category</span>`;
+          root.appendChild(sub);
+        }
+      }
       const div = document.createElement("div");
       div.className = "inv-row";
       withReveal(div, rowIndex++);
-      const iconUrl = resolveInventoryIconUrl(category, row);
+      const iconMarkup = category === "talent_orbs"
+        ? renderTalentOrbIcon(row)
+        : `<img class="item-icon" src="${resolveInventoryIconUrl(category, row)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`;
       div.innerHTML = `
-        <span class="inv-left"><img class="item-icon" src="${iconUrl}" alt="" loading="lazy" referrerpolicy="no-referrer" /> ${row.name}</span>
+        <span class="inv-left">${iconMarkup} ${row.name}</span>
         <span class="inv-edit"><input class="inv-input" type="number" min="0" value="${row.amount}" /><button class="inv-save-btn">Apply</button></span>
       `;
-      applyItemIconFallback(div.querySelector(".item-icon"), category);
+      if (category !== "talent_orbs") applyItemIconFallback(div.querySelector(".item-icon"), category);
       const input = div.querySelector(".inv-input");
       const apply = () => applyInventoryEdit(category, Number(row.index), Number(input.value || 0));
       div.querySelector(".inv-save-btn").onclick = apply;
@@ -1130,6 +1277,7 @@ async function refreshInventory() {
     catamins: out.catamins || [],
     catseyes: out.catseyes || [],
     catfruit: out.catfruit || [],
+    talent_orbs: out.talent_orbs || [],
     materials: out.materials || [],
   };
   renderInventory();
@@ -1242,6 +1390,7 @@ async function applyInventoryEdit(category, index, amount) {
     catamins: out.inventory?.catamins || [],
     catseyes: out.inventory?.catseyes || [],
     catfruit: out.inventory?.catfruit || [],
+    talent_orbs: out.inventory?.talent_orbs || [],
     materials: out.inventory?.materials || [],
   };
   renderInventory();
@@ -1440,38 +1589,95 @@ async function applyTransferDownload() {
   if (!body.transfer_code || !body.confirmation_code) {
     throw new Error("Enter transfer and confirmation codes first.");
   }
-  const out = await api("/api/transfer/download", "POST", body);
-  state.currentPath = out.path || null;
-  $("pathLabel").textContent = state.currentPath || "No file selected";
-  renderSummary(out.summary);
-  setHistory(out.history || {});
-  state.transferHistory = out.records || [];
-  state.transferStorage = out.storage || state.transferStorage;
-  renderTransferHistory();
-  if ($("transferDownloadMeta")) {
-    $("transferDownloadMeta").textContent = `Downloaded and loaded: ${out.path || "-"}`;
+  const transferDownloadBtn = $("transferDownloadBtn");
+  const transferUploadBtn = $("transferUploadBtn");
+  const transferDownloadMeta = $("transferDownloadMeta");
+  const transferUploadMeta = $("transferUploadMeta");
+  if (transferDownloadBtn && !transferDownloadBtn.dataset.defaultLabel) {
+    transferDownloadBtn.dataset.defaultLabel = transferDownloadBtn.textContent;
   }
-  persistTransferFormState();
-  await refreshAllLoaded();
-  markDirty(false);
-  setStatus("Transfer download complete. Save loaded.");
+  if (transferUploadBtn && !transferUploadBtn.dataset.defaultLabel) {
+    transferUploadBtn.dataset.defaultLabel = transferUploadBtn.textContent;
+  }
+  if (transferDownloadBtn) {
+    transferDownloadBtn.disabled = true;
+    transferDownloadBtn.textContent = "Downloading...";
+  }
+  if (transferUploadBtn) transferUploadBtn.disabled = true;
+  if (transferDownloadMeta) transferDownloadMeta.textContent = "Downloading and loading save data...";
+  if (transferUploadMeta) transferUploadMeta.textContent = "";
+  setStatus("Downloading save data from server...");
+  try {
+    const out = await api("/api/transfer/download", "POST", body);
+    state.currentPath = out.path || null;
+    $("pathLabel").textContent = state.currentPath || "No file selected";
+    renderSummary(out.summary);
+    setHistory(out.history || {});
+    state.transferHistory = out.records || [];
+    state.transferStorage = out.storage || state.transferStorage;
+    renderTransferHistory();
+    if (transferDownloadMeta) {
+      transferDownloadMeta.textContent = `Downloaded and loaded: ${out.path || "-"}`;
+    }
+    persistTransferFormState();
+    await refreshAllLoaded();
+    markDirty(false);
+    setStatus("Transfer download complete. Save loaded.");
+  } finally {
+    if (transferDownloadBtn) {
+      transferDownloadBtn.disabled = false;
+      transferDownloadBtn.textContent = transferDownloadBtn.dataset.defaultLabel || "Download + Load Save";
+    }
+    if (transferUploadBtn) transferUploadBtn.disabled = false;
+  }
 }
 
 async function applyTransferUpload() {
   const body = {
     upload_managed_items: Boolean($("transferUploadManagedItems")?.checked),
   };
-  const out = await api("/api/transfer/upload", "POST", body);
-  renderSummary(out.summary);
-  setHistory(out.history || {});
-  state.transferHistory = out.records || [];
-  state.transferStorage = out.storage || state.transferStorage;
-  renderTransferHistory();
-  if ($("transferOutCode")) $("transferOutCode").value = out.transfer_code || "";
-  if ($("transferOutPin")) $("transferOutPin").value = out.confirmation_code || "";
-  persistTransferFormState();
-  const linked = Number(out.linked_downloads || 0);
-  setStatus(linked > 0 ? `Upload complete. Linked ${linked} downloaded account(s) as uploaded.` : "Upload complete. New transfer codes generated.");
+  const transferDownloadBtn = $("transferDownloadBtn");
+  const transferUploadBtn = $("transferUploadBtn");
+  const transferDownloadMeta = $("transferDownloadMeta");
+  const transferUploadMeta = $("transferUploadMeta");
+  if (transferDownloadBtn && !transferDownloadBtn.dataset.defaultLabel) {
+    transferDownloadBtn.dataset.defaultLabel = transferDownloadBtn.textContent;
+  }
+  if (transferUploadBtn && !transferUploadBtn.dataset.defaultLabel) {
+    transferUploadBtn.dataset.defaultLabel = transferUploadBtn.textContent;
+  }
+  if (transferUploadBtn) {
+    transferUploadBtn.disabled = true;
+    transferUploadBtn.textContent = "Uploading...";
+  }
+  if (transferDownloadBtn) transferDownloadBtn.disabled = true;
+  if (transferUploadMeta) transferUploadMeta.textContent = "Uploading current save and requesting new transfer codes...";
+  if (transferDownloadMeta) transferDownloadMeta.textContent = "";
+  setStatus("Uploading save data to server...");
+  try {
+    const out = await api("/api/transfer/upload", "POST", body);
+    renderSummary(out.summary);
+    setHistory(out.history || {});
+    state.transferHistory = out.records || [];
+    state.transferStorage = out.storage || state.transferStorage;
+    renderTransferHistory();
+    if ($("transferOutCode")) $("transferOutCode").value = out.transfer_code || "";
+    if ($("transferOutPin")) $("transferOutPin").value = out.confirmation_code || "";
+    persistTransferFormState();
+    const linked = Number(out.linked_downloads || 0);
+    if (transferUploadMeta) {
+      transferUploadMeta.textContent = linked > 0
+        ? `Upload complete. Linked ${linked} downloaded account(s) as uploaded.`
+        : "Upload complete. New transfer codes generated.";
+    }
+    setStatus(linked > 0 ? `Upload complete. Linked ${linked} downloaded account(s) as uploaded.` : "Upload complete. New transfer codes generated.");
+  } finally {
+    if (transferUploadBtn) {
+      transferUploadBtn.disabled = false;
+      transferUploadBtn.textContent = transferUploadBtn.dataset.defaultLabel || "Upload + Get Codes";
+    }
+    if (transferDownloadBtn) transferDownloadBtn.disabled = false;
+  }
 }
 
 async function clearTransferHistory() {
@@ -1741,9 +1947,11 @@ async function applyResourceEdits() {
 }
 
 async function applySelectedCatEdit() {
-  if (!$("cat_id").value) throw new Error("Select a cat first.");
+  if (!state.selectedCat) throw new Error("Select a cat first.");
+  const selectedId = Number(state.selectedCat.id);
+  if (!Number.isFinite(selectedId)) throw new Error("Selected cat id is invalid.");
   const out = await api("/api/cats/update", "POST", {
-    id: Number($("cat_id").value),
+    id: selectedId,
     owned: $("cat_owned").value === "1",
     base: Number($("cat_base").value || 1),
     plus: Number($("cat_plus").value || 0),
@@ -1753,6 +1961,7 @@ async function applySelectedCatEdit() {
   });
   renderSummary(out.summary);
   setHistory(out.history || {});
+  state.selectedIds = new Set([selectedId]);
   await refreshCats();
   await refreshDashboard();
   await refreshValidation();
@@ -1791,9 +2000,9 @@ const PRESET_HELP = {
       "catfood_topup: Raises Catfood to 1500 only if it is below 1500.",
       "xp / normal_tickets / np / leadership / battle_items: Sets these to their max values.",
       "gold_tickets_200: Sets Rare (gold) tickets to 200.",
-      "catfruit / base_materials / catseyes / catamins / labyrinth_medals / treasure_chests: Sets each category to max values.",
+      "catfruit_500 / talent_orbs_s_50 / base_materials / catseyes / catamins / labyrinth_medals / treasure_chests: Sets catfruit to 500 each, adds only S-grade orb types at 50 each, and maxes the other categories.",
       "special_skills_max + cat_base_cannons_max: Maxes all base upgrades, cannon development, and cannon part levels.",
-      "legit_max_cats: Unlocks all cats, applies legal max base/plus, unlocks true+4th forms where valid, maxes talents.",
+      "legit_max_cats: Unlocks all obtainable cats, applies legal max base/plus, unlocks true+4th forms where valid, maxes talents.",
       "clear_story_superior_treasures: Clears story and sets treasures to Superior tier (3).",
       "max_gamatoto: Maxes Gamatoto XP/helpers, sets return flag, sets Ototo engineers max.",
       "clear_all_maps: Marks many map categories and related progress as cleared.",
@@ -1808,7 +2017,7 @@ const PRESET_HELP = {
       "catfood_topup / xp / normal_tickets / np / leadership / battle_items: Applies progression/resource max operations.",
       "gold_tickets_200: Sets Rare (gold) tickets to 200.",
       "catseyes / catamins / catfruit / base_materials / labyrinth_medals / treasure_chests: Maxes these item categories.",
-      "special_skills_max + cat_base_cannons_max + legit_max_cats + max_gamatoto: Applies max progression on units/base/gamatoto.",
+      "special_skills_max + cat_base_cannons_max + legit_max_cats + max_gamatoto: Applies max progression on obtainable units/base/gamatoto.",
       "clear_story_only: Clears story stages without forcing treasure values.",
       "clear_all_maps: Applies broad map clear-state updates.",
     ],

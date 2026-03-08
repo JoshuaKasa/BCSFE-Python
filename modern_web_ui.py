@@ -56,6 +56,30 @@ def gatyaitem_icon_url(item_id: int | None) -> str | None:
     return f"https://battlecats.miraheze.org/wiki/Special:FilePath/{quote(filename)}"
 
 
+def wiki_file_icon_url(filename: str | None) -> str | None:
+    if not filename:
+        return None
+    return f"https://battlecats.miraheze.org/wiki/Special:FilePath/{quote(str(filename))}"
+
+
+def talent_orb_icon_url() -> str:
+    # Wiki has a generic orb inventory icon; per-orb icons are not consistently available.
+    return wiki_file_icon_url("Orbs_Icon.png") or "/webui/icons/inventory.svg"
+
+
+def talent_orb_rank_icon_url(rank: str | None) -> str:
+    rank_key = str(rank or "").strip().upper()
+    # Use existing Battle Cats talent icon files to visually differentiate orb grades.
+    mapping = {
+        "S": "Talent_9.png",
+        "A": "Talent_8.png",
+        "B": "Talent_7.png",
+        "C": "Talent_6.png",
+        "D": "Talent_5.png",
+    }
+    return wiki_file_icon_url(mapping.get(rank_key)) or talent_orb_icon_url()
+
+
 def medal_icon_url(medal_id: int | None) -> str | None:
     if medal_id is None:
         return None
@@ -124,6 +148,8 @@ class AppState:
 
 
 app = Flask(__name__, static_folder="webui", static_url_path="/webui")
+# Avoid stale JS/CSS after local updates while iterating on the editor UI.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 state = AppState()
 
 CACHE_DIR = REPO_ROOT / ".cache" / "mygamatoto"
@@ -1174,6 +1200,15 @@ def diff_payload(before: core.SaveFile, after: core.SaveFile) -> dict[str, Any]:
     after_mats = [safe_int(x.amount) for x in after.ototo.base_materials.materials]
     before_battle = [safe_int(x.amount) for x in before.battle_items.items]
     after_battle = [safe_int(x.amount) for x in after.battle_items.items]
+    before_orbs = dict(getattr(getattr(before, "talent_orbs", None), "orbs", {}) or {})
+    after_orbs = dict(getattr(getattr(after, "talent_orbs", None), "orbs", {}) or {})
+    orb_ids = set(before_orbs.keys()) | set(after_orbs.keys())
+    talent_orb_changes = sum(
+        1
+        for orb_id in orb_ids
+        if safe_int(getattr(before_orbs.get(orb_id), "value", 0), 0)
+        != safe_int(getattr(after_orbs.get(orb_id), "value", 0), 0)
+    )
 
     inventory_changes = {
         "catseyes": changed_indexes(before.catseyes, after.catseyes),
@@ -1181,6 +1216,7 @@ def diff_payload(before: core.SaveFile, after: core.SaveFile) -> dict[str, Any]:
         "catamins": changed_indexes(before.catamins, after.catamins),
         "materials": changed_indexes(before_mats, after_mats),
         "battle_items": changed_indexes(before_battle, after_battle),
+        "talent_orbs": talent_orb_changes,
     }
 
     before_story = story_progress_stats(before)
@@ -1430,6 +1466,7 @@ def inventory_payload(sf: core.SaveFile) -> dict[str, Any]:
     catseyes: list[dict[str, Any]] = []
     catfruit: list[dict[str, Any]] = []
     materials: list[dict[str, Any]] = []
+    talent_orbs: list[dict[str, Any]] = []
 
     try:
         battle_defs = core.core_data.get_gatya_item_buy(sf).get_by_category(3) or []
@@ -1526,6 +1563,84 @@ def inventory_payload(sf: core.SaveFile) -> dict[str, Any]:
     except Exception:
         pass
 
+    try:
+        # Prefer all known orb types from game data, then overlay current save counts.
+        orb_counts: dict[int, int] = {}
+        for orb_id, orb in (
+            getattr(getattr(sf, "talent_orbs", None), "orbs", {}) or {}
+        ).items():
+            oid = safe_int(orb_id, -1)
+            if oid < 0:
+                continue
+            orb_counts[oid] = safe_int(getattr(orb, "value", 0), 0)
+
+        orb_info_list = core.OrbInfoList.create(sf)
+        if orb_info_list is not None and getattr(orb_info_list, "orb_info_list", None):
+            for i, orb_info in enumerate(orb_info_list.orb_info_list):
+                raw = getattr(orb_info, "raw_orb_info", None)
+                orb_id = safe_int(getattr(raw, "orb_id", i), i)
+                if orb_id < 0:
+                    continue
+
+                rank = clean_name(str(getattr(orb_info, "rank", "") or "Unknown"))
+                target_raw = getattr(orb_info, "target", None)
+                target = clean_name(str(target_raw)) if target_raw else "All"
+                effect_raw = str(getattr(orb_info, "effect", "") or "")
+                effect = clean_name(effect_raw.replace("%@", "").replace("  ", " ").strip(" -:()"))
+                rank_id = safe_int(getattr(raw, "rank_id", -1), -1)
+                target_id = safe_int(getattr(raw, "target_id", -1), -1)
+                effect_id = safe_int(getattr(raw, "effect_id", -1), -1)
+                label = f"{target} {rank} Orb"
+                if effect:
+                    label = f"{label} - {effect}"
+
+                talent_orbs.append(
+                    {
+                        "index": int(orb_id),
+                        "item_id": -1,
+                        "icon_url": talent_orb_rank_icon_url(rank),
+                        "name": label,
+                        "amount": int(max(0, orb_counts.get(orb_id, 0))),
+                        "group": target,
+                        "rank": rank,
+                        "effect": effect,
+                        "target_id": target_id,
+                        "rank_id": rank_id,
+                        "effect_id": effect_id,
+                    }
+                )
+        else:
+            for orb_id in sorted(orb_counts.keys()):
+                talent_orbs.append(
+                    {
+                        "index": int(orb_id),
+                        "item_id": -1,
+                        "icon_url": talent_orb_icon_url(),
+                        "name": f"Talent Orb {orb_id}",
+                        "amount": int(max(0, orb_counts.get(orb_id, 0))),
+                        "group": "Unknown",
+                        "rank": "",
+                        "effect": "",
+                        "target_id": -1,
+                        "rank_id": -1,
+                        "effect_id": -1,
+                    }
+                )
+    except Exception:
+        pass
+
+    try:
+        talent_orbs.sort(
+            key=lambda row: (
+                str(row.get("group", "Unknown")),
+                str(row.get("effect", "")),
+                str(row.get("rank", "")),
+                safe_int(row.get("index"), 0),
+            )
+        )
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "battle_items": battle_items,
@@ -1533,6 +1648,7 @@ def inventory_payload(sf: core.SaveFile) -> dict[str, Any]:
         "catseyes": catseyes,
         "catfruit": catfruit,
         "materials": materials,
+        "talent_orbs": talent_orbs,
     }
 
 
@@ -2615,6 +2731,17 @@ def api_inventory_update():
                 raise RuntimeError(f"Material index out of range: {index}")
             max_value = core.core_data.max_value_manager.get(core.MaxValueType.BASE_MATERIALS)
             mats[index].amount = min(amount, int(max_value))
+        elif category == "talent_orbs":
+            if index < 0:
+                raise RuntimeError(f"Talent orb id out of range: {index}")
+            max_value = core.core_data.max_value_manager.get(core.MaxValueType.TALENT_ORBS)
+            capped = min(amount, int(max_value))
+            if getattr(sf, "talent_orbs", None) is None:
+                sf.talent_orbs = core.TalentOrbs.init()
+            if capped <= 0:
+                sf.talent_orbs.orbs.pop(index, None)
+            else:
+                sf.talent_orbs.orbs[index] = core.TalentOrb(index, capped)
         else:
             raise RuntimeError(f"Unsupported inventory category: {category}")
 

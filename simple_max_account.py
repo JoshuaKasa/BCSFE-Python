@@ -20,6 +20,7 @@ from bcsfe.core.game.gamoto import ototo as ototo_data  # noqa: E402
 
 
 Operation = Callable[[core.SaveFile], None]
+MAX_USHORT = 65535
 
 
 def top_up_catfood(save_file: core.SaveFile, target: int = 1500) -> None:
@@ -130,11 +131,12 @@ def max_special_skills(save_file: core.SaveFile) -> None:
         if ability is None:
             continue
 
-        max_base = max(0, int(ability.max_base_level) - 1)
-        max_plus = max(0, int(ability.max_plus_level))
+        # Save format stores these as ushort values; clamp to avoid overflow/corruption.
+        max_base = min(MAX_USHORT, max(0, int(ability.max_base_level) - 1))
+        max_plus = min(MAX_USHORT, max(0, int(ability.max_plus_level)))
         save_file.special_skills.set_upgrade(
             skill_id,
-            core.Upgrade(max_base, max_plus),
+            core.Upgrade(max_plus, max_base),
             max_base=max_base,
             max_plus=max_plus,
         )
@@ -262,6 +264,73 @@ def max_catfruit(save_file: core.SaveFile) -> None:
         save_file.catfruit[idx] = max_value
 
 
+def set_catfruit_500(save_file: core.SaveFile) -> None:
+    """Set every catfruit slot to 500 for human-max preset balance."""
+    for idx in range(len(save_file.catfruit)):
+        save_file.catfruit[idx] = 500
+
+
+def add_all_talent_orb_types(save_file: core.SaveFile, count_per_type: int = 1) -> None:
+    """Add every known talent orb type (including S grade variants) to the save."""
+    max_value = core.core_data.max_value_manager.get(core.MaxValueType.TALENT_ORBS)
+    target_count = max(1, min(int(count_per_type), int(max_value)))
+
+    if getattr(save_file, "talent_orbs", None) is None:
+        save_file.talent_orbs = core.TalentOrbs.init()
+
+    orb_info_list = core.OrbInfoList.create(save_file)
+    if orb_info_list is None or not getattr(orb_info_list, "orb_info_list", None):
+        # Fallback: at least normalize existing orb entries.
+        for orb_id, orb in list((save_file.talent_orbs.orbs or {}).items()):
+            oid = int(orb_id)
+            current = int(getattr(orb, "value", 0))
+            save_file.talent_orbs.orbs[oid] = core.TalentOrb(oid, max(current, target_count))
+        return
+
+    for i, orb_info in enumerate(orb_info_list.orb_info_list):
+        raw = getattr(orb_info, "raw_orb_info", None)
+        orb_id = int(getattr(raw, "orb_id", i))
+        if orb_id < 0:
+            continue
+        current_orb = save_file.talent_orbs.orbs.get(orb_id)
+        current = int(getattr(current_orb, "value", 0)) if current_orb is not None else 0
+        save_file.talent_orbs.orbs[orb_id] = core.TalentOrb(orb_id, max(current, target_count))
+
+
+def add_s_talent_orb_types(save_file: core.SaveFile, count_per_type: int = 50) -> None:
+    """Add only S-grade talent orb types to the save."""
+    max_value = core.core_data.max_value_manager.get(core.MaxValueType.TALENT_ORBS)
+    target_count = max(1, min(int(count_per_type), int(max_value)))
+
+    if getattr(save_file, "talent_orbs", None) is None:
+        save_file.talent_orbs = core.TalentOrbs.init()
+
+    orb_info_list = core.OrbInfoList.create(save_file)
+    if orb_info_list is None or not getattr(orb_info_list, "orb_info_list", None):
+        return
+
+    s_orb_ids: set[int] = set()
+    for i, orb_info in enumerate(orb_info_list.orb_info_list):
+        raw = getattr(orb_info, "raw_orb_info", None)
+        orb_id = int(getattr(raw, "orb_id", i))
+        if orb_id < 0:
+            continue
+        rank = str(getattr(orb_info, "rank", "") or "").strip().upper()
+        rank_id = int(getattr(raw, "rank_id", -1))
+        if rank != "S" and rank_id != 4:
+            continue
+        s_orb_ids.add(orb_id)
+
+    # Keep only S-grade orb types for this operation.
+    for orb_id in list((save_file.talent_orbs.orbs or {}).keys()):
+        if int(orb_id) not in s_orb_ids:
+            save_file.talent_orbs.orbs.pop(int(orb_id), None)
+
+    # Set each S-grade orb type to the requested fixed count.
+    for orb_id in s_orb_ids:
+        save_file.talent_orbs.orbs[orb_id] = core.TalentOrb(orb_id, target_count)
+
+
 def max_base_materials(save_file: core.SaveFile) -> None:
     if not hasattr(save_file, "ototo") or not hasattr(save_file.ototo, "base_materials"):
         return
@@ -305,14 +374,43 @@ def max_cat_base_cannons(save_file: core.SaveFile) -> None:
             max_level = recipe.get_max_level(cannon_id, part_id)
             if max_level is None:
                 max_level = recipe.get_max_part_level(part_id)
-            cannon.levels[part_id] = max(0, int(max_level or 0))
+            raw_level = max(0, int(max_level or 0))
+            # Effect is stored internally as zero-based; in-game max level is one-based.
+            if part_id == 0:
+                raw_level = max(0, raw_level - 1)
+            cannon.levels[part_id] = raw_level
 
-    if not cannons.selected_parts:
-        cannons.selected_parts = [[0, 0, 0]]
+    # For some versions selected_parts has a fixed serialized size. Writing the wrong count
+    # can corrupt subsequent save fields and trigger in-game Ototo crashes.
+    selected_parts = list(getattr(cannons, "selected_parts", []) or [])
+    fixed_len: int | None = None
+    if save_file.game_version < 80200:
+        fixed_len = 1
+    elif save_file.game_version <= 90699:
+        fixed_len = 10
+
+    if fixed_len is not None:
+        selected_parts = selected_parts[:fixed_len]
+        while len(selected_parts) < fixed_len:
+            selected_parts.append([0, 0, 0])
+    elif not selected_parts:
+        selected_parts = [[0, 0, 0]]
+
+    cleaned_selected_parts: list[list[int]] = []
+    for row in selected_parts:
+        values = list(row or [])
+        while len(values) < 3:
+            values.append(0)
+        cleaned_selected_parts.append(
+            [max(0, min(255, int(values[0]))), max(0, min(255, int(values[1]))), max(0, min(255, int(values[2])))]
+        )
+    cannons.selected_parts = cleaned_selected_parts
 
 
 def legit_max_cats(save_file: core.SaveFile) -> None:
-    all_cats = list(save_file.cats.cats)
+    obtainable_cats = save_file.cats.get_cats_obtainable(save_file)
+    # If obtainable list cannot be resolved from game data, avoid unlocking placeholder slots.
+    all_cats = list(obtainable_cats or save_file.cats.get_unlocked_cats())
     for cat in all_cats:
         cat.unlock(save_file)
         cat.catguide_collected = True
@@ -367,6 +465,9 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "hundred_million_ticket": ("100 million tickets", max_all.max_100_million_ticket),
     "treasure_chests": ("Treasure chests", safe_max_treasure_chests),
     "catfruit": ("Catfruit / evolution fruits", max_catfruit),
+    "catfruit_500": ("Set catfruit / evolution fruits to 500 each", set_catfruit_500),
+    "talent_orbs_all": ("Add all talent orb types (1 each, includes S-grade)", add_all_talent_orb_types),
+    "talent_orbs_s_50": ("Add S-grade talent orb types (50 each)", add_s_talent_orb_types),
     "base_materials": ("Base materials", max_base_materials),
     "gold_tickets_200": ("Set gold (rare) tickets to 200", set_gold_tickets_200),
     "special_skills_max": ("Max support/base upgrades", max_special_skills),
@@ -397,7 +498,8 @@ PRESETS: dict[str, list[str]] = {
         "np",
         "leadership",
         "battle_items",
-        "catfruit",
+        "catfruit_500",
+        "talent_orbs_s_50",
         "base_materials",
         "catseyes",
         "catamins",

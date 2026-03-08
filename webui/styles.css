@@ -236,6 +236,23 @@ button,
   height: 16px;
 }
 
+.orb-icon-composite {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
+.orb-layer {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+}
+
 .field-label {
   display: inline-flex;
   align-items: center;
