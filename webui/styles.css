@@ -854,6 +854,37 @@ tr.owned {
   background: #edf8fb;
 }
 
+.orb-group-header {
+  align-items: center;
+}
+
+.orb-group-toggle {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #175b67;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orb-group-toggle:hover,
+.orb-group-toggle:active {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.orb-group-chevron {
+  width: 12px;
+  color: #2f7785;
+}
+
 .inv-left {
   display: inline-flex;
   align-items: center;

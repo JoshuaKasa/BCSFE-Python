@@ -30,6 +30,7 @@ const state = {
   history: { can_undo: false, can_redo: false },
   searchTimer: null,
   enemySearchTimer: null,
+  collapsedTalentOrbGroups: new Set(),
 };
 
 const TRANSFER_FORM_STORAGE_KEY = "bcsfe_transfer_form_v1";
@@ -39,6 +40,34 @@ const ITEM_ICON_BASE = "https://battlecats.miraheze.org/wiki/Special:FilePath/";
 const ORB_ATTRIBUTE_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_attribute_14.3.png")}`;
 const ORB_EFFECT_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_effect_15.1.png")}`;
 const ORB_GRADE_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_grade.png")}`;
+const ORB_ATTR_INDEX_BY_GROUP = {
+  red: 0,
+  floating: 1,
+  black: 2,
+  metal: 3,
+  angel: 4,
+  all: 5,
+  alien: 6,
+  zombie: 7,
+  relic: 8,
+  white: 9,
+  traitless: 9,
+  aku: 10,
+};
+const ORB_ATTR_INDEX_BY_TARGET_ID = {
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 6,
+  6: 7,
+  7: 8,
+  8: 9,
+  9: 5,
+  10: 10,
+  11: 10,
+};
 const CATEGORY_FALLBACK_ICONS = {
   battle_items: "inventory",
   catamins: "inventory",
@@ -76,14 +105,24 @@ const ITEM_ID_ICON_ALIAS = {
   184: 40,
 };
 const CANNON_ICON_FILE_BY_NAME = {
-  "cat cannon": "Cannon_Icon.png",
-  "slow beam": "Slow_Beam_Cannon.jpg",
-  "iron wall": "Iron_Wall_Cannon.jpg",
+  "cat cannon": "Cannon.png",
+  "slow beam": "Slow_Cannon.png",
+  "slow beam cannon": "Slow_Cannon.png",
+  "iron wall": "Iron_Cannon.png",
+  "iron wall cannon": "Iron_Cannon.png",
   thunderbolt: "Thunderbolt_Cannon.png",
+  "thunderbolt cannon": "Thunderbolt_Cannon.png",
   waterblast: "Waterblast_Cannon.png",
+  "water blast": "Waterblast_Cannon.png",
+  "waterblast cannon": "Waterblast_Cannon.png",
   "holy blast": "Holy_Cannon.png",
+  "holy blast cannon": "Holy_Cannon.png",
   "breakerblast": "Breakerblast_Cannon.png",
+  "breaker blast": "Breakerblast_Cannon.png",
+  "breakerblast cannon": "Breakerblast_Cannon.png",
   curseblast: "Curseblast_Cannon.png",
+  "curse blast": "Curseblast_Cannon.png",
+  "curseblast cannon": "Curseblast_Cannon.png",
 };
 const NAME_ITEM_ID_FALLBACK = {
   "speed up": 0,
@@ -236,14 +275,33 @@ function orbCellStyle(spriteUrl, col, row, cols, rows) {
   return `background-image:url('${spriteUrl}');background-size:${cols * size}px ${rows * size}px;background-position:-${x * size}px -${y * size}px;`;
 }
 
+function resolveTalentOrbAttrIndex(row) {
+  const groupKey = normalizeName(row?.group);
+  if (groupKey && Number.isInteger(ORB_ATTR_INDEX_BY_GROUP[groupKey])) return ORB_ATTR_INDEX_BY_GROUP[groupKey];
+  if (groupKey.includes("all")) return ORB_ATTR_INDEX_BY_GROUP.all;
+  if (groupKey.includes("traitless") || groupKey.includes("white")) return ORB_ATTR_INDEX_BY_GROUP.traitless;
+  if (groupKey.includes("floating")) return ORB_ATTR_INDEX_BY_GROUP.floating;
+  if (groupKey.includes("alien")) return ORB_ATTR_INDEX_BY_GROUP.alien;
+  if (groupKey.includes("zombie")) return ORB_ATTR_INDEX_BY_GROUP.zombie;
+  if (groupKey.includes("relic")) return ORB_ATTR_INDEX_BY_GROUP.relic;
+  if (groupKey.includes("angel")) return ORB_ATTR_INDEX_BY_GROUP.angel;
+  if (groupKey.includes("metal")) return ORB_ATTR_INDEX_BY_GROUP.metal;
+  if (groupKey.includes("black")) return ORB_ATTR_INDEX_BY_GROUP.black;
+  if (groupKey.includes("red")) return ORB_ATTR_INDEX_BY_GROUP.red;
+  if (groupKey.includes("aku")) return ORB_ATTR_INDEX_BY_GROUP.aku;
+  const targetId = Number(row?.target_id);
+  if (Number.isInteger(targetId) && Number.isInteger(ORB_ATTR_INDEX_BY_TARGET_ID[targetId])) {
+    return ORB_ATTR_INDEX_BY_TARGET_ID[targetId];
+  }
+  return ORB_ATTR_INDEX_BY_GROUP.all;
+}
+
 function renderTalentOrbIcon(row) {
-  const targetIdRaw = Number(row?.target_id);
   const effectIdRaw = Number(row?.effect_id);
   const rankIdRaw = Number(row?.rank_id);
-  const targetId = Number.isInteger(targetIdRaw) ? targetIdRaw : 8;
   const effectId = Number.isInteger(effectIdRaw) ? effectIdRaw : 0;
   const rankId = Number.isInteger(rankIdRaw) ? rankIdRaw : 0;
-  const targetIndex = targetId >= 0 && targetId <= 10 ? targetId : 8;
+  const targetIndex = resolveTalentOrbAttrIndex(row);
   const effectIndex = effectId >= 0 && effectId <= 29 ? effectId : 0;
   const gradeIndex = rankId >= 0 && rankId <= 4 ? rankId : 0;
   const attrCol = targetIndex % 6;
@@ -1222,6 +1280,7 @@ function renderInventory() {
   let rowIndex = 0;
   for (const category of selected) {
     const rows = [...(state.inventory[category] || [])];
+    let orbGroupCounts = null;
     if (category === "talent_orbs") {
       rows.sort((a, b) => {
         const ga = String(a.group || "Unknown");
@@ -1235,6 +1294,11 @@ function renderInventory() {
         if (ra !== rb) return ra.localeCompare(rb);
         return Number(a.index || 0) - Number(b.index || 0);
       });
+      orbGroupCounts = new Map();
+      for (const row of rows) {
+        const group = String(row.group || "Unknown");
+        orbGroupCounts.set(group, (orbGroupCounts.get(group) || 0) + 1);
+      }
     }
     if (state.inventoryTab === "all") {
       const header = document.createElement("div");
@@ -1249,12 +1313,29 @@ function renderInventory() {
         const group = String(row.group || "Unknown");
         if (group !== currentGroup) {
           currentGroup = group;
+          const collapsed = state.collapsedTalentOrbGroups.has(group);
+          const count = orbGroupCounts ? (orbGroupCounts.get(group) || 0) : 0;
           const sub = document.createElement("div");
-          sub.className = "inv-row inv-header";
+          sub.className = "inv-row inv-header orb-group-header";
           withReveal(sub, rowIndex++);
-          sub.innerHTML = `<span class="inv-left"><strong>${group}</strong></span><span class="muted">Talent Orb Category</span>`;
+          sub.innerHTML = `
+            <span class="inv-left">
+              <button class="orb-group-toggle" type="button" aria-expanded="${collapsed ? "false" : "true"}" aria-label="${collapsed ? "Expand" : "Collapse"} ${group}">
+                <span class="orb-group-chevron" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+                <strong>${group}</strong>
+              </button>
+            </span>
+            <span class="muted">${count} items</span>
+          `;
+          const toggle = sub.querySelector(".orb-group-toggle");
+          toggle.onclick = () => {
+            if (state.collapsedTalentOrbGroups.has(group)) state.collapsedTalentOrbGroups.delete(group);
+            else state.collapsedTalentOrbGroups.add(group);
+            renderInventory();
+          };
           root.appendChild(sub);
         }
+        if (state.collapsedTalentOrbGroups.has(group)) continue;
       }
       const div = document.createElement("div");
       div.className = "inv-row";
