@@ -390,12 +390,63 @@
       </section>
 
       <section id="page_tools" class="page">
-        <section class="panel">
-          <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Tools</h2>
-          <div class="row-actions"><button id="refreshValidationBtn">Refresh Validation Report</button></div>
-          <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Validation</h2>
-          <div id="validationList" class="list-box scroll-pane"></div>
-        </section>
+        <div class="tools-grid">
+          <section class="panel tools-quick-panel">
+            <h2><img class="icon" src="/webui/icons/preset.svg" alt="" /> Quick Tools</h2>
+            <div class="muted">One-click operations with diff preview + confirmation.</div>
+            <div class="tools-groups">
+              <div class="tool-group">
+                <h3>Resources</h3>
+                <div class="tool-button-grid">
+                  <button id="tool_catfood_topup" class="tool-op-btn">Catfood Top-up (1500)</button>
+                  <button id="tool_xp" class="tool-op-btn">Max XP</button>
+                  <button id="tool_np" class="tool-op-btn">Max NP</button>
+                  <button id="tool_battle_items" class="tool-op-btn">Max Battle Items</button>
+                  <button id="tool_catfruit" class="tool-op-btn">Max Catfruit</button>
+                  <button id="tool_catseyes" class="tool-op-btn">Max Catseyes</button>
+                  <button id="tool_catamins" class="tool-op-btn">Max Catamins</button>
+                  <button id="tool_base_materials" class="tool-op-btn">Max Base Materials</button>
+                </div>
+              </div>
+              <div class="tool-group">
+                <h3>Progression</h3>
+                <div class="tool-button-grid">
+                  <button id="tool_special_skills_max" class="tool-op-btn">Max Base Upgrades</button>
+                  <button id="tool_cat_base_cannons_max" class="tool-op-btn">Max Base Cannons</button>
+                  <button id="tool_max_gamatoto" class="tool-op-btn">Max Gamatoto</button>
+                  <button id="tool_unlock_all_cats" class="tool-op-btn">Unlock All Cats</button>
+                  <button id="tool_legit_max_cats" class="tool-op-btn">Legit Max Cats</button>
+                </div>
+              </div>
+              <div class="tool-group">
+                <h3>Story And Maps (Risky)</h3>
+                <div class="tool-button-grid">
+                  <button id="tool_clear_story_only" class="tool-op-btn risk">Clear Story Only</button>
+                  <button id="tool_clear_story_superior_treasures" class="tool-op-btn risk">Clear Story + Superior</button>
+                  <button id="tool_clear_all_maps" class="tool-op-btn risk">Clear All Maps</button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="panel tools-side-panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Playtime</h2>
+            <div id="playtimeMeta" class="muted">No save loaded.</div>
+            <div class="editor-grid">
+              <label>Hours <input id="playtime_hours" type="number" min="0" step="1" /></label>
+              <label>Minutes <input id="playtime_minutes" type="number" min="0" max="59" step="1" /></label>
+              <label>Seconds <input id="playtime_seconds" type="number" min="0" max="59" step="1" /></label>
+            </div>
+            <div class="row-actions">
+              <button id="applyPlaytimeBtn" title="Set in-game playtime to these values">Apply Playtime</button>
+              <button id="add24hBtn" title="Add 24 hours to current in-game playtime">+24 Hours</button>
+            </div>
+          </section>
+          <section class="panel tools-validation-panel">
+            <h2><img class="icon" src="/webui/icons/chart.svg" alt="" /> Validation</h2>
+            <div class="row-actions"><button id="refreshValidationBtn">Refresh Validation Report</button></div>
+            <div id="validationList" class="list-box scroll-pane"></div>
+          </section>
+        </div>
       </section>
     </main>
 

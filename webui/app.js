@@ -19,6 +19,7 @@ const state = {
   transferStorage: null,
   gamatoto: null,
   catTalents: [],
+  playtime: null,
   enemies: [],
   selectedEnemy: null,
   validation: [],
@@ -134,6 +135,27 @@ const NAME_ITEM_ID_FALLBACK = {
   "meteorite z": 192,
   "beast bones z": 193,
   "ammonite z": 194,
+};
+const TOOL_OPERATIONS = {
+  tool_catfood_topup: { key: "catfood_topup", label: "Catfood Top-up (1500)" },
+  tool_xp: { key: "xp", label: "Max XP" },
+  tool_np: { key: "np", label: "Max NP" },
+  tool_battle_items: { key: "battle_items", label: "Max Battle Items" },
+  tool_catfruit: { key: "catfruit", label: "Max Catfruit" },
+  tool_catseyes: { key: "catseyes", label: "Max Catseyes" },
+  tool_catamins: { key: "catamins", label: "Max Catamins" },
+  tool_base_materials: { key: "base_materials", label: "Max Base Materials" },
+  tool_special_skills_max: { key: "special_skills_max", label: "Max Base Upgrades" },
+  tool_cat_base_cannons_max: { key: "cat_base_cannons_max", label: "Max Base Cannons" },
+  tool_max_gamatoto: { key: "max_gamatoto", label: "Max Gamatoto" },
+  tool_unlock_all_cats: { key: "unlock_all_cats", label: "Unlock All Cats" },
+  tool_legit_max_cats: { key: "legit_max_cats", label: "Legit Max Cats" },
+  tool_clear_story_only: { key: "clear_story_only", label: "Clear Story Only" },
+  tool_clear_story_superior_treasures: {
+    key: "clear_story_superior_treasures",
+    label: "Clear Story + Superior Treasures",
+  },
+  tool_clear_all_maps: { key: "clear_all_maps", label: "Clear All Maps" },
 };
 
 function normalizeName(value) {
@@ -274,6 +296,8 @@ function setButtonTooltips() {
     redoBtn: "Redo the last undone edit.",
     syncBtn: "Refresh cat names using MyGamatoto naming data.",
     applyResourcesBtn: "Apply the resource values in this panel.",
+    applyPlaytimeBtn: "Apply the playtime values in this panel.",
+    add24hBtn: "Add 24 hours to current playtime.",
     maxGamatotoBtn: "Apply max legal Gamatoto preset operation.",
     applyCatEditBtn: "Save the selected cat edits.",
     bulkUnlockBtn: "Unlock every cat in current bulk scope.",
@@ -300,6 +324,22 @@ function setButtonTooltips() {
     transferUseOutputBtn: "Fill the download inputs with the generated upload codes.",
     transferBackupBtn: "Download a JSON backup of transfer history records.",
     transferClearHistoryBtn: "Clear stored transfer code history.",
+    tool_catfood_topup: "Top up Catfood to 1500 only if it is lower.",
+    tool_xp: "Set XP to max value.",
+    tool_np: "Set NP to max value.",
+    tool_battle_items: "Set battle items to max values.",
+    tool_catfruit: "Set catfruit/evolution fruits to max values.",
+    tool_catseyes: "Set all catseyes to max values.",
+    tool_catamins: "Set all catamins to max values.",
+    tool_base_materials: "Set all cat base materials to max values.",
+    tool_special_skills_max: "Max all support/base upgrades.",
+    tool_cat_base_cannons_max: "Max cannon development and parts.",
+    tool_max_gamatoto: "Max Gamatoto values and helper setup.",
+    tool_unlock_all_cats: "Unlock all cats without changing levels.",
+    tool_legit_max_cats: "Apply legal max progression to all obtainable cats.",
+    tool_clear_story_only: "Clear all story stages; keeps current treasures (risky).",
+    tool_clear_story_superior_treasures: "Clear story and set treasures to Superior (risky).",
+    tool_clear_all_maps: "Mark many map categories as cleared (risky).",
   };
   const controlTooltips = {
     safeModeToggle: "When enabled, risky operations require confirmation and can be blocked.",
@@ -577,6 +617,28 @@ function renderDashboard() {
     `;
     root.appendChild(div);
   });
+}
+
+function renderPlaytime() {
+  const meta = $("playtimeMeta");
+  const hours = $("playtime_hours");
+  const minutes = $("playtime_minutes");
+  const seconds = $("playtime_seconds");
+  const playtime = state.playtime;
+  if (!meta || !hours || !minutes || !seconds) return;
+
+  if (!playtime) {
+    meta.textContent = "No save loaded.";
+    hours.value = "";
+    minutes.value = "";
+    seconds.value = "";
+    return;
+  }
+
+  hours.value = Number(playtime.hours || 0);
+  minutes.value = Number(playtime.minutes || 0);
+  seconds.value = Number(playtime.seconds || 0);
+  meta.textContent = `Current: ${Number(playtime.hours || 0)}h ${Number(playtime.minutes || 0)}m ${Number(playtime.seconds || 0)}s (${Number(playtime.frames || 0)} frames)`;
 }
 
 function renderProgress() {
@@ -1330,6 +1392,29 @@ async function refreshGamatoto() {
 }
 
 async function refreshDashboard() { state.dashboard = await api("/api/dashboard"); renderDashboard(); }
+async function refreshPlaytime() {
+  try {
+    const out = await api("/api/playtime");
+    state.playtime = {
+      hours: Number(out.hours || 0),
+      minutes: Number(out.minutes || 0),
+      seconds: Number(out.seconds || 0),
+      frames: Number(out.frames || 0),
+    };
+    renderPlaytime();
+    if ($("applyPlaytimeBtn")) $("applyPlaytimeBtn").disabled = false;
+    if ($("add24hBtn")) $("add24hBtn").disabled = false;
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    const missingEndpoint = message.includes("404") && (message.includes("/api/playtime") || message.includes("Not Found"));
+    if (!missingEndpoint) throw error;
+    state.playtime = null;
+    renderPlaytime();
+    if ($("playtimeMeta")) $("playtimeMeta").textContent = "Playtime editor unavailable on current backend. Restart backend to enable.";
+    if ($("applyPlaytimeBtn")) $("applyPlaytimeBtn").disabled = true;
+    if ($("add24hBtn")) $("add24hBtn").disabled = true;
+  }
+}
 async function refreshProgress() { state.progress = await api("/api/progress/story"); renderProgress(); }
 async function refreshBase() {
   const [upgradesOut, cannonsOut] = await Promise.all([
@@ -1358,6 +1443,7 @@ async function refreshAllLoaded() {
     refreshInventory,
     refreshTrophies,
     refreshDashboard,
+    refreshPlaytime,
     refreshProgress,
     refreshStoryEditor,
     refreshBase,
@@ -1730,9 +1816,16 @@ function bindEvents() {
   $("redoBtn").onclick = withErr(redo, "Redo error");
   $("syncBtn").onclick = withErr(syncMyGamatoto, "Sync error");
   $("applyResourcesBtn").onclick = withErr(applyResourceEdits, "Resources error");
+  if ($("applyPlaytimeBtn")) $("applyPlaytimeBtn").onclick = withErr(applyPlaytimeEdit, "Playtime error");
+  if ($("add24hBtn")) $("add24hBtn").onclick = withErr(() => addPlaytimeHours(24), "Playtime error");
   $("maxGamatotoBtn").onclick = withErr(() => applyOperation("max_gamatoto", "Max Gamatoto"), "Operation error");
   $("maxBaseBtn").onclick = withErr(() => applyOperation("special_skills_max", "Max Base Upgrades"), "Operation error");
   $("refreshValidationBtn").onclick = withErr(refreshValidation, "Validation error");
+  Object.entries(TOOL_OPERATIONS).forEach(([id, config]) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.onclick = withErr(() => applyOperation(config.key, config.label), "Tool error");
+  });
   $("applyCatEditBtn").onclick = withErr(applySelectedCatEdit, "Cat edit error");
   $("bulkUnlockBtn").onclick = withErr(() => runBulk({ unlock: true }, "Unlock"), "Bulk error");
   $("bulkTrueFormBtn").onclick = withErr(() => runBulk({ true_form: true }, "True Forms"), "Bulk error");
@@ -1796,6 +1889,16 @@ function bindEvents() {
     };
   }
   if ($("enemyFilterSelect")) $("enemyFilterSelect").onchange = () => refreshEnemyGuide().catch(() => {});
+  ["playtime_hours", "playtime_minutes", "playtime_seconds"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyPlaytimeEdit().catch(() => {});
+      }
+    });
+  });
   ["transferCountry", "transferGameVersion", "transferCodeInput", "transferPinInput", "transferOutCode", "transferOutPin", "transferUploadManagedItems"].forEach((id) => {
     const el = $(id);
     if (!el) return;
@@ -1944,6 +2047,47 @@ async function applyResourceEdits() {
   await refreshDashboard();
   await refreshValidation();
   markDirty(true);
+}
+
+async function applyPlaytimeEdit() {
+  if ($("applyPlaytimeBtn")?.disabled) {
+    throw new Error("Playtime endpoint unavailable. Restart backend first.");
+  }
+  try {
+    const out = await api("/api/playtime/update", "POST", {
+      hours: Number($("playtime_hours")?.value || 0),
+      minutes: Number($("playtime_minutes")?.value || 0),
+      seconds: Number($("playtime_seconds")?.value || 0),
+    });
+    renderSummary(out.summary);
+    setHistory(out.history || {});
+    state.playtime = {
+      hours: Number(out.hours || 0),
+      minutes: Number(out.minutes || 0),
+      seconds: Number(out.seconds || 0),
+      frames: Number(out.frames || 0),
+    };
+    renderPlaytime();
+    setStatus("Playtime updated.");
+    markDirty(true);
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    const missingEndpoint = message.includes("404") && (message.includes("/api/playtime") || message.includes("Not Found"));
+    if (missingEndpoint) {
+      if ($("playtimeMeta")) $("playtimeMeta").textContent = "Playtime editor unavailable on current backend. Restart backend to enable.";
+      if ($("applyPlaytimeBtn")) $("applyPlaytimeBtn").disabled = true;
+      if ($("add24hBtn")) $("add24hBtn").disabled = true;
+      throw new Error("Playtime endpoint unavailable. Restart backend first.");
+    }
+    throw error;
+  }
+}
+
+async function addPlaytimeHours(deltaHours) {
+  const baseHours = Number(state.playtime?.hours ?? $("playtime_hours")?.value ?? 0);
+  const nextHours = Math.max(0, baseHours + Number(deltaHours || 0));
+  if ($("playtime_hours")) $("playtime_hours").value = String(nextHours);
+  await applyPlaytimeEdit();
 }
 
 async function applySelectedCatEdit() {
@@ -2115,6 +2259,7 @@ async function init() {
   switchPreviewTab(state.previewTab);
   $("pathLabel").textContent = "No file selected";
   activateInventoryTab(state.inventoryTab);
+  renderPlaytime();
   renderCatTalents();
   renderTransferHistory();
   markDirty(false);

@@ -780,6 +780,17 @@ def dashboard_payload(sf: core.SaveFile) -> dict[str, Any]:
     }
 
 
+def playtime_payload(sf: core.SaveFile) -> dict[str, Any]:
+    play_time = core.PlayTime(safe_int(getattr(sf.officer_pass, "play_time", 0), 0))
+    return {
+        "ok": True,
+        "hours": max(0, safe_int(play_time.hours, 0)),
+        "minutes": max(0, safe_int(play_time.just_minutes, 0)),
+        "seconds": max(0, safe_int(play_time.just_seconds, 0)),
+        "frames": max(0, safe_int(play_time.frames, 0)),
+    }
+
+
 def base_upgrades_payload(sf: core.SaveFile) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     names_o = core.core_data.get_gatya_item_names(sf)
@@ -2315,6 +2326,38 @@ def api_dashboard():
         payload["summary"] = summary(sf)
         payload["history"] = history_state()
         return jsonify(payload)
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.get("/api/playtime")
+def api_playtime():
+    try:
+        sf = ensure_loaded()
+        payload = playtime_payload(sf)
+        payload["summary"] = summary(sf)
+        payload["history"] = history_state()
+        return jsonify(payload)
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.post("/api/playtime/update")
+def api_playtime_update():
+    try:
+        sf = ensure_loaded()
+        payload = request.get_json(force=True)
+        hours = max(0, safe_int(payload.get("hours"), 0))
+        minutes = max(0, min(59, safe_int(payload.get("minutes"), 0)))
+        seconds = max(0, min(59, safe_int(payload.get("seconds"), 0)))
+        play_time = core.PlayTime.from_hours_mins_secs(hours, minutes, seconds)
+        sf.officer_pass.play_time = max(0, safe_int(play_time.frames, 0))
+
+        push_history("playtime_update")
+        updated = playtime_payload(sf)
+        updated["summary"] = summary(sf)
+        updated["history"] = history_state()
+        return jsonify(updated)
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 400
 
