@@ -43,3 +43,4 @@ package-dir = { "" = "src" }
 
 [project.scripts]
 bcsfe = "bcsfe:run"
+bcsfe-webui = "bcsfe.webui_server.main:main"
