@@ -22,6 +22,7 @@ from .core_modules.helpers import clone_save
 from .core_modules.helpers import ensure_loaded
 from .core_modules.helpers import get_ops_and_presets
 from .core_modules.helpers import parse_game_version
+from .core_modules.helpers import reset_core_data_caches
 from .core_modules.helpers import resolve_preset_key
 from .core_modules.history_store import history_state
 from .core_modules.history_store import push_history
@@ -68,6 +69,7 @@ __all__ = [
     "persist_transfer_records",
     "push_history",
     "push_transfer_record",
+    "reset_core_data_caches",
     "reset_history",
     "resolve_input_path",
     "resolve_preset_key",

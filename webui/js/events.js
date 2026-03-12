@@ -24,6 +24,22 @@ function bindEvents() {
     btn.onclick = withErr(() => applyOperation(config.key, config.label), "Tool error");
   });
   $("applyCatEditBtn").onclick = withErr(applySelectedCatEdit, "Cat edit error");
+  [
+    "cat_owned",
+    "cat_base",
+    "cat_plus",
+    "cat_form",
+    "cat_unlocked_forms",
+    "cat_fourth",
+  ].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      applySelectedCatEdit().catch(() => {});
+    });
+  });
   $("bulkUnlockBtn").onclick = withErr(() => runBulk({ unlock: true }, "Unlock"), "Bulk error");
   $("bulkTrueFormBtn").onclick = withErr(() => runBulk({ true_form: true }, "True Forms"), "Bulk error");
   $("bulkFourthFormBtn").onclick = withErr(() => runBulk({ fourth_form: true }, "4th Forms"), "Bulk error");
@@ -44,6 +60,8 @@ function bindEvents() {
     await applyEnemyGuideEdit(state.selectedEnemy.id, !state.selectedEnemy.unlocked);
   }, "Enemy guide error");
   if ($("transferDownloadBtn")) $("transferDownloadBtn").onclick = withErr(applyTransferDownload, "Transfer download error");
+  if ($("useLatestTransferVersionBtn")) $("useLatestTransferVersionBtn").onclick = withErr(useLatestTransferVersion, "Version error");
+  if ($("updateSaveVersionBtn")) $("updateSaveVersionBtn").onclick = withErr(updateLoadedSaveVersionToLatest, "Version error");
   if ($("transferUploadBtn")) $("transferUploadBtn").onclick = withErr(applyTransferUpload, "Transfer upload error");
   if ($("transferCopyCodeBtn")) $("transferCopyCodeBtn").onclick = withErr(() => copyTransferField("transferOutCode", "Transfer code"), "Copy error");
   if ($("transferCopyPinBtn")) $("transferCopyPinBtn").onclick = withErr(() => copyTransferField("transferOutPin", "Confirmation code"), "Copy error");
@@ -101,7 +119,12 @@ function bindEvents() {
     if (!el) return;
     const isSelect = String(el.tagName || "").toLowerCase() === "select";
     const eventName = el.type === "checkbox" || isSelect ? "change" : "input";
-    el.addEventListener(eventName, () => persistTransferFormState());
+    el.addEventListener(eventName, () => {
+      persistTransferFormState();
+      if (id === "transferCountry") {
+        refreshGameVersionStatus().catch(() => {});
+      }
+    });
   });
 
   window.addEventListener("beforeunload", (e) => {
@@ -179,6 +202,7 @@ async function loadSave() {
   const picked = await api("/api/pick_path");
   const out = await api("/api/load", "POST", { path: picked.path });
   state.currentPath = picked.path;
+  state.gameVersionWarningKey = null;
   $("pathLabel").textContent = picked.path;
   renderSummary(out.summary);
   setHistory(out.history || {});
@@ -287,18 +311,76 @@ async function addPlaytimeHours(deltaHours) {
   await applyPlaytimeEdit();
 }
 
-async function applySelectedCatEdit() {
-  if (!state.selectedCat) throw new Error("Select a cat first.");
-  const selectedId = Number(state.selectedCat.id);
-  if (!Number.isFinite(selectedId)) throw new Error("Selected cat id is invalid.");
-  const out = await api("/api/cats/update", "POST", {
-    id: selectedId,
+function getSelectedCatIdForEditor() {
+  const inputId = Number($("cat_id")?.value || NaN);
+  if (Number.isFinite(inputId)) return inputId;
+  if (!state.selectedCat) return NaN;
+  return Number(state.selectedCat.id);
+}
+
+
+function getCatEditorValues() {
+  return {
     owned: $("cat_owned").value === "1",
     base: Number($("cat_base").value || 1),
     plus: Number($("cat_plus").value || 0),
     form: Number($("cat_form").value || 0),
     unlocked_forms: Number($("cat_unlocked_forms").value || 0),
     fourth: Number($("cat_fourth").value || 0),
+  };
+}
+
+
+function isSelectedCatEditorDirty() {
+  const cat = state.selectedCat;
+  if (!cat) return false;
+  const editorId = getSelectedCatIdForEditor();
+  if (!Number.isFinite(editorId)) return false;
+  if (editorId !== Number(cat.id)) return false;
+  const editorValues = getCatEditorValues();
+  return (
+    Boolean(cat.owned) !== editorValues.owned
+    || Number(cat.base) !== editorValues.base
+    || Number(cat.plus) !== editorValues.plus
+    || Number(cat.form) !== editorValues.form
+    || Number(cat.unlocked_forms) !== editorValues.unlocked_forms
+    || Number(cat.fourth) !== editorValues.fourth
+  );
+}
+
+
+async function maybeApplyCatPreviewEditsBeforeSelection(nextCatId) {
+  const currentId = getSelectedCatIdForEditor();
+  const targetId = Number(nextCatId);
+  if (!Number.isFinite(currentId) || !Number.isFinite(targetId)) return true;
+  if (currentId === targetId) return true;
+  if (!isSelectedCatEditorDirty()) return true;
+  const shouldApply = window.confirm(
+    "Apply current cat edits before switching to another cat?",
+  );
+  if (!shouldApply) {
+    return window.confirm(
+      "Discard current cat edits and switch selection?",
+    );
+  }
+  try {
+    await applySelectedCatEdit();
+    return true;
+  } catch (error) {
+    const message = String(error?.message || error || "Cat edit failed.");
+    setStatus(`Cat edit error: ${message}`);
+    showToast(`Cat edit error: ${message}`, "error");
+    return false;
+  }
+}
+
+
+async function applySelectedCatEdit() {
+  const selectedId = getSelectedCatIdForEditor();
+  if (!Number.isFinite(selectedId)) throw new Error("Selected cat id is invalid.");
+  const out = await api("/api/cats/update", "POST", {
+    id: selectedId,
+    ...getCatEditorValues(),
   });
   renderSummary(out.summary);
   setHistory(out.history || {});
@@ -464,4 +546,3 @@ async function initUI() {
   await refreshTransferHistory();
   await refreshAllLoaded();
 }
-

@@ -105,6 +105,41 @@ function renderProgress() {
     row.innerHTML = `<span>${chapter.name}</span><span class="muted">Clears ${chapter.cleared}/${chapter.clear_total} | Superior ${chapter.superior}/${chapter.treasure_total}</span>`;
     root.appendChild(row);
   }
+
+  const legend = state.progress?.legend || {};
+  const legendGroups = legend.groups || [];
+  if (!legendGroups.length) return;
+
+  const legendHeader = document.createElement("div");
+  legendHeader.className = "inv-row inv-header legend-divider";
+  withReveal(legendHeader, rowIndex++);
+  legendHeader.innerHTML = `
+    <span><strong>Legend Progress</strong></span>
+    <span class="muted">Maps ${Number(legend.maps_started || 0)}/${Number(legend.maps_total || 0)} | Stages ${Number(legend.cleared_stages || 0)}/${Number(legend.total_stages || 0)}</span>
+  `;
+  root.appendChild(legendHeader);
+
+  for (const group of legendGroups) {
+    const groupRow = document.createElement("div");
+    groupRow.className = "inv-row legend-group-row";
+    withReveal(groupRow, rowIndex++);
+    groupRow.innerHTML = `
+      <span>${esc(group.name || "Legend Group")}</span>
+      <span class="muted">Maps ${Number(group.maps_started || 0)}/${Number(group.maps_total || 0)} | Stages ${Number(group.cleared_stages || 0)}/${Number(group.total_stages || 0)}</span>
+    `;
+    root.appendChild(groupRow);
+
+    for (const map of group.maps || []) {
+      const mapRow = document.createElement("div");
+      mapRow.className = "inv-row legend-map-row";
+      withReveal(mapRow, rowIndex++);
+      mapRow.innerHTML = `
+        <span class="muted legend-map-name">${esc(map.name || `Map ${Number(map.index || 0) + 1}`)}</span>
+        <span class="muted">Stages ${Number(map.cleared_stages || 0)}/${Number(map.total_stages || 0)} | Stars ${Number(map.stars_cleared || 0)}/${Number(map.stars_total || 0)}</span>
+      `;
+      root.appendChild(mapRow);
+    }
+  }
 }
 
 function renderStoryTable() {
@@ -317,6 +352,46 @@ function renderTransferStorageInfo() {
   el.textContent = `History file: ${historyPath || "-"} | Downloaded saves: ${downloadsDir || "-"}`;
 }
 
+function renderGameVersionStatus() {
+  const el = $("gameVersionStatus");
+  if (!el) return;
+  const info = state.gameVersionInfo;
+  const updateBtn = $("updateSaveVersionBtn");
+  const useLatestBtn = $("useLatestTransferVersionBtn");
+  if (!info) {
+    el.textContent = "Game version check unavailable.";
+    if (updateBtn) updateBtn.disabled = true;
+    if (useLatestBtn) useLatestBtn.disabled = true;
+    return;
+  }
+
+  const country = String(info.country || "en");
+  const latest = info.latest_game_version;
+  const saveVersion = info.save_game_version;
+  const source = String(info.latest_source || "none");
+  if (!latest) {
+    el.textContent = `Latest version unavailable for ${country}. Connect to update metadata.`;
+    if (updateBtn) updateBtn.disabled = true;
+    if (useLatestBtn) useLatestBtn.disabled = true;
+    return;
+  }
+
+  const sourceLabel = source === "remote" ? "metadata" : source;
+  const statusBadge = info.is_outdated
+    ? `<span class="badge warn">Save is outdated</span>`
+    : saveVersion
+      ? `<span class="badge on">Up to date</span>`
+      : "";
+
+  const saveText = saveVersion
+    ? `Save ${esc(saveVersion)} | `
+    : "";
+  el.innerHTML = `${statusBadge} ${saveText}Latest ${esc(latest)} for ${esc(country)} (${esc(sourceLabel)})`.trim();
+
+  if (updateBtn) updateBtn.disabled = !(saveVersion && info.is_outdated);
+  if (useLatestBtn) useLatestBtn.disabled = false;
+}
+
 function renderTransferHistory() {
   const root = $("transferHistoryList");
   if (!root) return;
@@ -467,7 +542,7 @@ function renderEnemyGuide() {
     const canEdit = enemy.editable !== false;
     const actionLabel = canEdit ? (enemy.unlocked ? "Clear" : "Unlock") : "N/A";
     tr.innerHTML = `
-      <td><img class="enemy-icon" src="${enemy.image_url || "/webui/icons/chart.svg"}" alt="" loading="lazy" referrerpolicy="no-referrer" /></td>
+      <td><img class="enemy-icon" src="${enemy.image_url || uiIcon("chart")}" alt="" loading="lazy" referrerpolicy="no-referrer" /></td>
       <td>${enemy.id}</td>
       <td>${enemy.name}${validTag}</td>
       <td><span class="badge ${enemy.unlocked ? "on" : "off"}">${enemy.unlocked ? "Unlocked" : "Missing"}</span></td>
@@ -499,7 +574,7 @@ function renderEnemyPreview() {
   root.innerHTML = `
     <div class="enemy-preview-card">
       <div class="enemy-preview-hero">
-        <img class="enemy-preview-image" src="${enemy.image_url || "/webui/icons/chart.svg"}" alt="${enemy.name}" loading="lazy" referrerpolicy="no-referrer" />
+        <img class="enemy-preview-image" src="${enemy.image_url || uiIcon("chart")}" alt="${enemy.name}" loading="lazy" referrerpolicy="no-referrer" />
       </div>
       <div class="enemy-preview-meta">
         <div><strong>ID</strong> <span>${enemy.id}</span></div>
@@ -524,7 +599,13 @@ function renderCats() {
     tr.className = c.owned ? "owned" : "missing";
     withReveal(tr, idx);
     if (state.selectedIds.has(c.id)) tr.classList.add("selected");
-    tr.onclick = (ev) => {
+    tr.onclick = async (ev) => {
+      if (typeof maybeApplyCatPreviewEditsBeforeSelection === "function") {
+        const shouldContinue = await maybeApplyCatPreviewEditsBeforeSelection(
+          c.id,
+        );
+        if (!shouldContinue) return;
+      }
       if (ev.shiftKey && state.lastSelectedIndex !== null) {
         const a = Math.min(state.lastSelectedIndex, idx);
         const b = Math.max(state.lastSelectedIndex, idx);
@@ -555,6 +636,26 @@ function renderCats() {
       <td>${c.id}</td><td>${c.name}</td><td>${c.owned ? "Yes" : "No"}</td>
       <td>${c.base}</td><td>${c.plus}</td><td>${c.form}</td><td>${c.unlocked_forms}</td><td>${c.fourth}</td>
     `;
+    const catImg = tr.querySelector(".cat-img");
+    if (catImg) {
+      const spriteUrl = String(c.sprite_url || "").trim();
+      const fallbackIcon = "https://onestoppress.com/images/001-1_square.png";
+      catImg.onerror = () => {
+        const stage = Number(catImg.dataset.fallbackStage || "0");
+        if (stage === 0 && spriteUrl && catImg.src !== spriteUrl) {
+          catImg.dataset.fallbackStage = "1";
+          catImg.src = spriteUrl;
+          return;
+        }
+        if (stage <= 1) {
+          catImg.dataset.fallbackStage = "2";
+          catImg.src = fallbackIcon;
+          return;
+        }
+        catImg.onerror = null;
+      };
+      catImg.dataset.fallbackStage = "0";
+    }
     body.appendChild(tr);
     state.catRows.set(c.id, tr);
   });
@@ -751,7 +852,7 @@ function renderTrophies() {
     const div = document.createElement("div");
     div.className = "inv-row trophy-row";
     withReveal(div, idx);
-    const icon = row.icon_url || "/webui/icons/preset.svg";
+    const icon = row.icon_url || uiIcon("preset");
     div.innerHTML = `
       <span class="inv-left trophy-left">
         <img class="item-icon trophy-icon" src="${icon}" alt="" loading="lazy" referrerpolicy="no-referrer" />

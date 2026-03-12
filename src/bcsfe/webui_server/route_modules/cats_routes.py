@@ -22,6 +22,48 @@ from ..services import get_cat_total_forms
 from ..services import summary
 
 
+def _resolve_metadata_cat_total(sf: core.SaveFile) -> int:
+    """Resolve total cat ids available in current game data."""
+    total = len(tuple(getattr(sf.cats, "cats", ()) or ()))
+    try:
+        pic_book = sf.cats.read_nyanko_picture_book(sf)
+        pb_cats = tuple(getattr(pic_book, "cats", ()) or ())
+        total = max(total, len(pb_cats))
+    except Exception:
+        pass
+    return max(total, 0)
+
+
+def _ensure_save_has_cat_count(sf: core.SaveFile, total: int) -> None:
+    """Expand save cat array up to total count with default locked cats."""
+    if total <= 0:
+        return
+    cats = list(getattr(sf.cats, "cats", ()) or ())
+    while len(cats) < total:
+        cats.append(core.Cat.init(len(cats)))
+    sf.cats.cats = cats
+
+
+def _ensure_cat_exists(sf: core.SaveFile, cat_id: int) -> core.Cat | None:
+    """Return existing cat or create it when id exists in game metadata."""
+    if cat_id < 0:
+        return None
+    existing = sf.cats.get_cat_by_id(cat_id)
+    if existing is not None:
+        return existing
+    metadata_total = _resolve_metadata_cat_total(sf)
+    if cat_id >= metadata_total:
+        return None
+    _ensure_save_has_cat_count(sf, cat_id + 1)
+    return sf.cats.get_cat_by_id(cat_id)
+
+
+def _ensure_cats_exist(sf: core.SaveFile, ids: list[int]) -> None:
+    """Ensure all provided cat ids exist in save arrays."""
+    for cat_id in sorted(set(ids)):
+        _ensure_cat_exists(sf, cat_id)
+
+
 def _collect_selected_cats(
     sf: core.SaveFile,
     ids: list[int],
@@ -73,7 +115,13 @@ def _build_cats_payload(
 ) -> list[dict[str, object]]:
     """Build filtered cat rows for cat table view."""
     rows: list[dict[str, object]] = []
-    for cat in sf.cats.cats:
+    existing = {
+        int(cat.id): cat
+        for cat in tuple(getattr(sf.cats, "cats", ()) or ())
+    }
+    total = _resolve_metadata_cat_total(sf)
+    for cat_id in range(total):
+        cat = existing.get(cat_id) or core.Cat.init(cat_id)
         if mode == "Unlocked" and not cat.unlocked:
             continue
         if mode == "Locked" and cat.unlocked:
@@ -131,6 +179,16 @@ def api_cats_talents():
         cat_id = int(request.args.get("cat_id", "-1"))
         cat = sf.cats.get_cat_by_id(cat_id)
         if cat is None:
+            max_total = _resolve_metadata_cat_total(sf)
+            if 0 <= cat_id < max_total:
+                return jsonify(
+                    {
+                        "ok": True,
+                        "cat_id": cat_id,
+                        "talents": [],
+                        "history": history_state(),
+                    }
+                )
             raise RuntimeError(f"Cat not found: {cat_id}")
         payload = cat_talents_payload(sf, cat)
         payload["history"] = history_state()
@@ -148,7 +206,7 @@ def api_cats_talent_update():
         cat_id = int(payload.get("cat_id"))
         talent_id = int(payload.get("talent_id"))
         new_level = max(0, int(payload.get("level", 0)))
-        cat = sf.cats.get_cat_by_id(cat_id)
+        cat = _ensure_cat_exists(sf, cat_id)
         if cat is None:
             raise RuntimeError(f"Cat not found: {cat_id}")
         talents = list(getattr(cat, "talents", []) or [])
@@ -181,6 +239,7 @@ def api_cats_action():
         payload = request.get_json(force=True)
         action = payload.get("action", "")
         ids = [int(value) for value in payload.get("ids", [])]
+        _ensure_cats_exist(sf, ids)
         cats = _collect_selected_cats(sf, ids)
 
         if action == "unlock":
@@ -232,7 +291,7 @@ def api_cats_update():
         sf = ensure_loaded()
         payload = request.get_json(force=True)
         cat_id = int(payload.get("id"))
-        cat = sf.cats.get_cat_by_id(cat_id)
+        cat = _ensure_cat_exists(sf, cat_id)
         if cat is None:
             raise RuntimeError(f"Cat not found: {cat_id}")
 
@@ -276,6 +335,12 @@ def api_cats_bulk():
     try:
         sf = ensure_loaded()
         payload = request.get_json(force=True)
+        ids_raw = payload.get("ids")
+        ids = [int(value) for value in ids_raw] if isinstance(ids_raw, list) else []
+        if ids:
+            _ensure_cats_exist(sf, ids)
+        else:
+            _ensure_save_has_cat_count(sf, _resolve_metadata_cat_total(sf))
         count = apply_bulk_changes(sf, payload)
         if count > 0:
             push_history("cats_bulk")
@@ -299,6 +364,15 @@ def api_cats_bulk_preview():
         payload = request.get_json(force=True)
         before = clone_save(sf)
         preview = clone_save(sf)
+        ids_raw = payload.get("ids")
+        ids = [int(value) for value in ids_raw] if isinstance(ids_raw, list) else []
+        if ids:
+            _ensure_cats_exist(before, ids)
+            _ensure_cats_exist(preview, ids)
+        else:
+            target_total = _resolve_metadata_cat_total(sf)
+            _ensure_save_has_cat_count(before, target_total)
+            _ensure_save_has_cat_count(preview, target_total)
         count = apply_bulk_changes(preview, payload)
         return jsonify(
             {

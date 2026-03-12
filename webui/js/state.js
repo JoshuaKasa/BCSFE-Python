@@ -18,6 +18,8 @@ const state = {
   baseSelectedParts: [0, 0, 0],
   transferHistory: [],
   transferStorage: null,
+  gameVersionInfo: null,
+  gameVersionWarningKey: null,
   gamatoto: null,
   catTalents: [],
   playtime: null,
@@ -37,6 +39,21 @@ const state = {
 const TRANSFER_FORM_STORAGE_KEY = "bcsfe_transfer_form_v1";
 
 const $ = (id) => document.getElementById(id);
+const ONLINE_ICON_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid/";
+const ONLINE_UI_ICONS = {
+  cat: `${ONLINE_ICON_BASE}cat.svg`,
+  refresh: `${ONLINE_ICON_BASE}arrows-rotate.svg`,
+  sync: `${ONLINE_ICON_BASE}arrows-rotate.svg`,
+  folder: `${ONLINE_ICON_BASE}folder-open.svg`,
+  save: `${ONLINE_ICON_BASE}floppy-disk.svg`,
+  chart: `${ONLINE_ICON_BASE}chart-column.svg`,
+  inventory: `${ONLINE_ICON_BASE}boxes-stacked.svg`,
+  catfruit: `${ONLINE_ICON_BASE}seedling.svg`,
+  catseye: `${ONLINE_ICON_BASE}eye.svg`,
+  preset: `${ONLINE_ICON_BASE}sliders.svg`,
+  preview: `${ONLINE_ICON_BASE}image.svg`,
+  material: `${ONLINE_ICON_BASE}hammer.svg`,
+};
 const ITEM_ICON_BASE = "https://battlecats.miraheze.org/wiki/Special:FilePath/";
 const ORB_ATTRIBUTE_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_attribute_14.3.png")}`;
 const ORB_EFFECT_SPRITE_URL = `${ITEM_ICON_BASE}${encodeURIComponent("Equipment_effect_15.1.png")}`;
@@ -198,6 +215,10 @@ const TOOL_OPERATIONS = {
   tool_clear_all_maps: { key: "clear_all_maps", label: "Clear All Maps" },
 };
 
+function uiIcon(name) {
+  return ONLINE_UI_ICONS[String(name || "").trim()] || ONLINE_UI_ICONS.chart;
+}
+
 function normalizeName(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -225,14 +246,14 @@ function wikiFileIconUrl(fileName) {
 }
 
 function fallbackIconForCategory(category) {
-  return `/webui/icons/${CATEGORY_FALLBACK_ICONS[category] || "inventory"}.svg`;
+  return uiIcon(CATEGORY_FALLBACK_ICONS[category] || "inventory");
 }
 
 function resolveBaseUpgradeIconUrl(row) {
   const byId = wikiItemIconUrl(Number(row?.item_id));
   if (byId) return byId;
   if (row?.icon_url) return row.icon_url;
-  return "/webui/icons/material.svg";
+  return uiIcon("material");
 }
 
 function resolveCannonIconUrl(cannon) {
@@ -339,7 +360,7 @@ function bindStaticIconFallbacks() {
     img.onerror = () => {
       img.onerror = null;
       img.referrerPolicy = "";
-      img.src = "/webui/icons/inventory.svg";
+      img.src = uiIcon("inventory");
     };
   });
 }
@@ -376,8 +397,10 @@ function setButtonTooltips() {
     enemyUnlockAllBtn: "Unlock all enemy guide entries.",
     enemyClearAllBtn: "Clear all enemy guide entries.",
     enemyToggleSelectedBtn: "Toggle unlock state for the selected enemy.",
-    transferDownloadBtn: "Download save data from transfer/confirmation codes and load it.",
-    transferUploadBtn: "Upload loaded save to server and generate new transfer/confirmation codes.",
+    transferDownloadBtn: "Download a save from transfer + confirmation codes and load it.",
+    useLatestTransferVersionBtn: "Set transfer Game Version to the latest known version for selected country.",
+    updateSaveVersionBtn: "Update loaded save version to latest known version and refresh related data.",
+    transferUploadBtn: "Upload loaded save to server and generate new transfer + confirmation codes.",
     transferCopyCodeBtn: "Copy the generated transfer code.",
     transferCopyPinBtn: "Copy the generated confirmation code.",
     transferUseOutputBtn: "Fill the download inputs with the generated upload codes.",
@@ -406,10 +429,10 @@ function setButtonTooltips() {
     transferUploadManagedItems: "Include managed server items when uploading save data.",
     gamatoto_return_flag: "Marks expedition as returned/ready state in save data.",
     gamatoto_is_ad_present: "Controls the Gamatoto ad-present state flag in save data.",
-    transferCountry: "Country code used for transfer code endpoints (en/jp/kr/tw).",
-    transferGameVersion: "Optional game version override when downloading via transfer codes.",
-    transferCodeInput: "Transfer code used for server download.",
-    transferPinInput: "Confirmation code (PIN) paired with transfer code.",
+    transferCountry: "Region of the account/codes (en, jp, kr, tw).",
+    transferGameVersion: "Optional version override for transfer download. Leave blank to auto-pick.",
+    transferCodeInput: "Transfer code from in-game Data Transfer.",
+    transferPinInput: "Confirmation code paired with the transfer code.",
     transferOutCode: "Generated transfer code from last successful upload.",
     transferOutPin: "Generated confirmation code from last successful upload.",
     searchInput: "Filter cats by ID or name.",
@@ -483,13 +506,23 @@ function updateCatSpritePreview() {
   const number = getCatNumber(cat.id, formIndex);
   const spriteUrl = `https://onestoppress.com/images/${number}.png`;
   const fallbackUrl = `https://onestoppress.com/images/${number}_square.png`;
+  const fallbackIcon = "https://onestoppress.com/images/001-1_square.png";
   image.alt = `${cat.name} form ${formIndex + 1}`;
   image.onerror = () => {
-    if (image.dataset.fallbackApplied === "1") return;
-    image.dataset.fallbackApplied = "1";
-    image.src = fallbackUrl;
+    const stage = Number(image.dataset.fallbackStage || "0");
+    if (stage === 0 && image.src !== fallbackUrl) {
+      image.dataset.fallbackStage = "1";
+      image.src = fallbackUrl;
+      return;
+    }
+    if (stage <= 1) {
+      image.dataset.fallbackStage = "2";
+      image.src = fallbackIcon;
+      return;
+    }
+    image.onerror = null;
   };
-  image.dataset.fallbackApplied = "0";
+  image.dataset.fallbackStage = "0";
   image.src = spriteUrl;
 }
 

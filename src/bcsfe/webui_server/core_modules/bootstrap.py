@@ -78,7 +78,10 @@ def wiki_file_icon_url(filename: str | None) -> str | None:
 
 def talent_orb_icon_url() -> str:
     """Return default talent orb icon URL."""
-    fallback_url = "/webui/icons/inventory.svg"
+    fallback_url = (
+        "https://cdn.jsdelivr.net/npm/@fortawesome/"
+        "fontawesome-free@6.5.2/svgs/solid/boxes-stacked.svg"
+    )
     return wiki_file_icon_url("Orbs_Icon.png") or fallback_url
 
 

@@ -11,6 +11,7 @@ from ..core import push_history
 from ..core import safe_int
 from ..services import apply_story_chapter_values
 from ..services import dashboard_payload
+from ..services import legend_progress_stats
 from ..services import playtime_payload
 from ..services import story_editor_payload
 from ..services import story_progress_stats
@@ -95,6 +96,7 @@ def api_progress_story():
             {
                 "ok": True,
                 "story": story_progress_stats(sf),
+                "legend": legend_progress_stats(sf),
                 "summary": summary(sf),
             }
         )

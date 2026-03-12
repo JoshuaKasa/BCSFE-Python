@@ -10,6 +10,31 @@ from .bootstrap import PRESET_ALIASES
 from .bootstrap import state
 
 
+def reset_core_data_caches() -> None:
+    """Reset per-save cached game-data objects in core_data."""
+    cached_fields = (
+        "game_data_getter",
+        "gatya_item_names",
+        "gatya_item_buy",
+        "chara_drop",
+        "gamatoto_levels",
+        "gamatoto_members_name",
+        "localizable",
+        "abilty_data",
+        "enemy_names",
+        "rank_gift_descriptions",
+        "rank_gifts",
+        "treasure_text",
+        "cat_shrine_levels",
+        "medal_names",
+        "mission_names",
+        "mission_conditions",
+    )
+    for field in cached_fields:
+        if hasattr(core.core_data, field):
+            setattr(core.core_data, field, None)
+
+
 def ensure_loaded() -> core.SaveFile:
     """Return the loaded save file, or fail if none is loaded."""
     if state.save_file is None:

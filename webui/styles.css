@@ -1188,6 +1188,11 @@ tr.owned {
   margin-bottom: 8px;
 }
 
+#page_transfer #gameVersionStatus {
+  margin-top: 6px;
+  min-height: 22px;
+}
+
 #page_transfer .transfer-history-panel {
   height: auto;
 }
@@ -1471,6 +1476,20 @@ tr.owned {
 
 #page_progress .story-side h2 {
   margin: 0 0 8px;
+}
+
+#page_progress .legend-divider {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+#page_progress .legend-group-row {
+  background: #f4fafc;
+}
+
+#page_progress .legend-map-row {
+  padding-left: 18px;
 }
 
 #page_progress .table-wrap,

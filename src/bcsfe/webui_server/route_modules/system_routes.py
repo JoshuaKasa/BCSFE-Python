@@ -12,7 +12,9 @@ from ..core import app
 from ..core import core
 from ..core import ensure_loaded
 from ..core import history_state
+from ..core import push_history
 from ..core import reset_history
+from ..core import reset_core_data_caches
 from ..core import resolve_input_path
 from ..core import restore_snapshot
 from ..core import SaveManagement
@@ -34,6 +36,90 @@ def _build_status_payload(loaded: bool) -> dict[str, object]:
         "loaded": True,
         "summary": summary(sf),
         "history": history_state(),
+    }
+
+
+def _resolve_version_country(raw: object | None = None) -> core.CountryCode:
+    """Resolve country for game-version checks."""
+    text = str(raw or "").strip().lower()
+    if text in set(core.CountryCode.get_all_str()):
+        return core.CountryCode.from_code(text)
+    if state.save_file is not None:
+        return ensure_loaded().cc
+    return core.CountryCode.from_code("en")
+
+
+def _latest_downloaded_version(country: core.CountryCode) -> core.GameVersion | None:
+    """Return latest locally downloaded game-data version for country."""
+    versions = core.GameDataGetter.get_all_downloaded_versions().get(
+        country.get_code(),
+        [],
+    )
+    if not versions:
+        return None
+    try:
+        latest = max(
+            versions,
+            key=lambda v: core.GameVersion.from_string(v).game_version,
+        )
+        return core.GameVersion.from_string(latest)
+    except Exception:
+        return None
+
+
+def _latest_remote_version(country: core.CountryCode) -> core.GameVersion | None:
+    """Return latest remote metadata game-data version for country."""
+    try:
+        gdg = core.GameDataGetter(country, core.GameVersion(1), do_print=False)
+        if gdg.metadata is None:
+            return None
+        versions = gdg.get_versions(gdg.metadata) or {}
+        cc_versions = versions.get(country.get_code(), {})
+        keys = list(cc_versions.keys()) if isinstance(cc_versions, dict) else []
+        if not keys:
+            return None
+        latest = max(
+            keys,
+            key=lambda v: core.GameVersion.from_string(v).game_version,
+        )
+        return core.GameVersion.from_string(latest)
+    except Exception:
+        return None
+
+
+def _resolve_latest_version(
+    country: core.CountryCode,
+) -> tuple[core.GameVersion | None, str]:
+    """Resolve latest game version using remote metadata with local fallback."""
+    remote = _latest_remote_version(country)
+    if remote is not None:
+        return remote, "remote"
+    local = _latest_downloaded_version(country)
+    if local is not None:
+        return local, "local"
+    return None, "none"
+
+
+def _build_game_version_payload(
+    country: core.CountryCode,
+    latest: core.GameVersion | None,
+    source: str,
+) -> dict[str, object]:
+    """Build web payload for save-vs-latest game-version status."""
+    save_version = None
+    outdated = None
+    if state.save_file is not None:
+        sf = ensure_loaded()
+        save_version = sf.game_version.to_string()
+        if latest is not None:
+            outdated = sf.game_version < latest
+    return {
+        "ok": True,
+        "country": country.get_code(),
+        "save_game_version": save_version,
+        "latest_game_version": latest.to_string() if latest else None,
+        "latest_source": source,
+        "is_outdated": outdated,
     }
 
 
@@ -75,6 +161,45 @@ def api_status():
     """Return editor load status."""
     loaded = state.save_file is not None
     return jsonify(_build_status_payload(loaded))
+
+
+@app.get("/api/game_version/latest")
+def api_game_version_latest():
+    """Return latest known game version and loaded-save version status."""
+    try:
+        country = _resolve_version_country(request.args.get("country"))
+        latest, source = _resolve_latest_version(country)
+        return jsonify(_build_game_version_payload(country, latest, source))
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+
+
+@app.post("/api/game_version/update_latest")
+def api_game_version_update_latest():
+    """Set loaded save game version to latest known version."""
+    try:
+        sf = ensure_loaded()
+        latest, source = _resolve_latest_version(sf.cc)
+        if latest is None:
+            raise RuntimeError("Could not resolve latest game version.")
+
+        changed = sf.game_version != latest
+        if changed:
+            sf.set_gv(latest)
+            reset_core_data_caches()
+            push_history(f"set_game_version:{latest.to_string()}")
+
+        return jsonify(
+            {
+                "ok": True,
+                "changed": changed,
+                "summary": summary(sf),
+                "history": history_state(),
+                "version": _build_game_version_payload(sf.cc, latest, source),
+            }
+        )
+    except Exception as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
 
 
 @app.get("/api/history")
@@ -151,6 +276,7 @@ def api_load():
         if result is None:
             raise RuntimeError("Could not parse save file.")
         save_file, _backup = result
+        reset_core_data_caches()
         state.save_file = save_file
         state.loaded_path = file_path
         state.name_cache = {}

@@ -21,6 +21,7 @@ from .service_modules.inventory_service import trophies_payload
 from .service_modules.story_stats_service import cat_guide_stats
 from .service_modules.story_stats_service import enemy_guide_payload
 from .service_modules.story_stats_service import enemy_guide_stats
+from .service_modules.story_stats_service import legend_progress_stats
 from .service_modules.story_stats_service import lineup_stats
 from .service_modules.story_stats_service import story_progress_stats
 from .service_modules.validation_service import validation_payload
@@ -42,6 +43,7 @@ __all__ = [
     "gamatoto_payload",
     "get_cat_total_forms",
     "inventory_payload",
+    "legend_progress_stats",
     "lineup_stats",
     "playtime_payload",
     "set_gamatoto_level",

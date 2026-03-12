@@ -18,6 +18,7 @@ from ..core import mark_matching_downloads_uploaded
 from ..core import parse_game_version
 from ..core import persist_transfer_records
 from ..core import push_transfer_record
+from ..core import reset_core_data_caches
 from ..core import reset_history
 from ..core import resolve_transfer_record_id
 from ..core import state
@@ -48,7 +49,42 @@ def _resolve_country_code(
 def _resolve_fallback_game_version() -> core.GameVersion:
     """Resolve default game version from loaded save or fallback."""
     if state.save_file is None:
-        return core.GameVersion(120200)
+        cc_code = _resolve_fallback_country_code()
+        cc = core.CountryCode.from_code(cc_code)
+
+        # Prefer latest locally downloaded version for this country.
+        downloaded = core.GameDataGetter.get_all_downloaded_versions().get(
+            cc.get_code(),
+            [],
+        )
+        if downloaded:
+            try:
+                latest_local = max(
+                    downloaded,
+                    key=lambda v: core.GameVersion.from_string(v).game_version,
+                )
+                return core.GameVersion.from_string(latest_local)
+            except Exception:
+                pass
+
+        # Fallback to latest version in remote metadata.
+        try:
+            gdg = core.GameDataGetter(cc, core.GameVersion(1), do_print=False)
+            if gdg.metadata is not None:
+                versions = gdg.get_versions(gdg.metadata) or {}
+                cc_versions = versions.get(cc.get_code(), {})
+                keys = list(cc_versions.keys()) if isinstance(cc_versions, dict) else []
+                if keys:
+                    latest_remote = max(
+                        keys,
+                        key=lambda v: core.GameVersion.from_string(v).game_version,
+                    )
+                    return core.GameVersion.from_string(latest_remote)
+        except Exception:
+            pass
+
+        # Last-resort safe default.
+        return core.GameVersion(150200)
     return ensure_loaded().game_version
 
 
@@ -103,6 +139,7 @@ def _replace_loaded_save(
     out_path: Path,
 ) -> None:
     """Replace currently loaded save context with downloaded save."""
+    reset_core_data_caches()
     state.save_file = downloaded_save
     state.loaded_path = out_path
     state.name_cache = {}

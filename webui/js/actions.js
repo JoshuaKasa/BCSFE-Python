@@ -5,6 +5,29 @@ async function refreshStatus() {
   setHistory(out.history || {});
   state.currentPath = out.summary?.path || null;
   $("pathLabel").textContent = state.currentPath || "No file selected";
+  await refreshGameVersionStatus();
+}
+
+async function refreshGameVersionStatus() {
+  const country = ($("transferCountry")?.value || "").trim().toLowerCase();
+  const query = country ? `?country=${encodeURIComponent(country)}` : "";
+  const out = await api(`/api/game_version/latest${query}`);
+  state.gameVersionInfo = out;
+  renderGameVersionStatus();
+
+  const latest = String(out?.latest_game_version || "").trim();
+  const saveVersion = String(out?.save_game_version || "").trim();
+  const outdated = Boolean(out?.is_outdated);
+  if (!state.currentPath || !latest || !saveVersion || !outdated) {
+    return;
+  }
+
+  const warningKey = `${state.currentPath}|${saveVersion}|${latest}`;
+  if (state.gameVersionWarningKey === warningKey) return;
+  state.gameVersionWarningKey = warningKey;
+  const message = `Loaded save uses ${saveVersion}, latest is ${latest}. Go to Transfer and click "Update Loaded Save To Latest".`;
+  setStatus(message);
+  showToast(message);
 }
 
 async function refreshCats() {
@@ -127,8 +150,12 @@ async function refreshTransferHistory() {
 }
 
 async function refreshAllLoaded() {
-  if (!state.currentPath) return;
+  if (!state.currentPath) {
+    await refreshGameVersionStatus();
+    return;
+  }
   const jobs = [
+    refreshGameVersionStatus,
     refreshCats,
     refreshInventory,
     refreshTrophies,
@@ -386,12 +413,14 @@ async function applyTransferDownload() {
   try {
     const out = await api("/api/transfer/download", "POST", body);
     state.currentPath = out.path || null;
+    state.gameVersionWarningKey = null;
     $("pathLabel").textContent = state.currentPath || "No file selected";
     renderSummary(out.summary);
     setHistory(out.history || {});
     state.transferHistory = out.records || [];
     state.transferStorage = out.storage || state.transferStorage;
     renderTransferHistory();
+    await refreshGameVersionStatus();
     if (transferDownloadMeta) {
       transferDownloadMeta.textContent = `Downloaded and loaded: ${out.path || "-"}`;
     }
@@ -437,6 +466,7 @@ async function applyTransferUpload() {
     state.transferHistory = out.records || [];
     state.transferStorage = out.storage || state.transferStorage;
     renderTransferHistory();
+    await refreshGameVersionStatus();
     if ($("transferOutCode")) $("transferOutCode").value = out.transfer_code || "";
     if ($("transferOutPin")) $("transferOutPin").value = out.confirmation_code || "";
     persistTransferFormState();
@@ -454,6 +484,40 @@ async function applyTransferUpload() {
     }
     if (transferDownloadBtn) transferDownloadBtn.disabled = false;
   }
+}
+
+async function useLatestTransferVersion() {
+  if (!state.gameVersionInfo?.latest_game_version) {
+    await refreshGameVersionStatus();
+  }
+  const latest = String(state.gameVersionInfo?.latest_game_version || "").trim();
+  if (!latest) throw new Error("Latest version unavailable.");
+  if ($("transferGameVersion")) $("transferGameVersion").value = latest;
+  persistTransferFormState();
+  setStatus(`Transfer game version set to ${latest}.`);
+}
+
+async function updateLoadedSaveVersionToLatest() {
+  if (!state.currentPath) throw new Error("Load a save first.");
+  if (!state.gameVersionInfo?.latest_game_version) {
+    await refreshGameVersionStatus();
+  }
+  const latest = String(state.gameVersionInfo?.latest_game_version || "").trim();
+  const current = String(state.gameVersionInfo?.save_game_version || "").trim();
+  if (!latest) throw new Error("Latest version unavailable.");
+  if (!current) throw new Error("Loaded save version unavailable.");
+  if (current === latest) {
+    setStatus(`Save already on latest version (${latest}).`);
+    return;
+  }
+  if (!window.confirm(`Update loaded save game version from ${current} to ${latest}?`)) return;
+  const out = await api("/api/game_version/update_latest", "POST", {});
+  renderSummary(out.summary);
+  setHistory(out.history || {});
+  state.gameVersionInfo = out.version || state.gameVersionInfo;
+  renderGameVersionStatus();
+  await refreshAllLoaded();
+  markDirty(true);
 }
 
 async function clearTransferHistory() {
@@ -491,4 +555,3 @@ async function copyTransferField(fieldId, label) {
   await navigator.clipboard.writeText(value);
   setStatus(`${label} copied.`);
 }
-

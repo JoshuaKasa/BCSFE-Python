@@ -4,6 +4,7 @@ from bcsfe import core
 
 from .bootstrap import state
 from .helpers import ensure_loaded
+from .helpers import reset_core_data_caches
 
 
 def history_state() -> dict[str, object]:
@@ -29,6 +30,7 @@ def snapshot_save(sf: core.SaveFile) -> dict[str, object]:
 def restore_snapshot(snapshot: dict[str, object]) -> core.SaveFile:
     """Restore a snapshot and set it as current loaded save."""
     restored = core.SaveFile.from_dict(snapshot, warn=False)
+    reset_core_data_caches()
     state.save_file = restored
     state.name_cache = {}
     return restored

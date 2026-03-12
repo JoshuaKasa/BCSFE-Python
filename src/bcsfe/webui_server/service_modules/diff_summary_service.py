@@ -271,6 +271,18 @@ def _resolve_trophy_totals(save_file: core.SaveFile) -> tuple[int, int]:
     return owned, total
 
 
+def _resolve_metadata_cat_total(save_file: core.SaveFile) -> int:
+    """Resolve total cat count from save + game metadata."""
+    total = len(tuple(getattr(save_file.cats, "cats", ()) or ()))
+    try:
+        pic_book = save_file.cats.read_nyanko_picture_book(save_file)
+        pb_cats = tuple(getattr(pic_book, "cats", ()) or ())
+        total = max(total, len(pb_cats))
+    except Exception:
+        pass
+    return max(total, 0)
+
+
 def summary(save_file: core.SaveFile) -> dict[str, object]:
     """Build summary payload for the currently loaded save."""
     unlocked_cats = sum(1 for cat in save_file.cats.cats if cat.unlocked)
@@ -287,7 +299,7 @@ def summary(save_file: core.SaveFile) -> dict[str, object]:
         "country": str(save_file.cc),
         "game_version": save_file.game_version.to_string(),
         "cats_unlocked": unlocked_cats,
-        "cats_total": len(save_file.cats.cats),
+        "cats_total": _resolve_metadata_cat_total(save_file),
         "catfood": save_file.catfood,
         "xp": save_file.xp,
         "np": save_file.np,
