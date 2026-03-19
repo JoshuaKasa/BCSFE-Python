@@ -17,6 +17,7 @@ from bcsfe.cli.edits import max_all  # noqa: E402
 from bcsfe.cli.save_management import SaveManagement  # noqa: E402
 from bcsfe.core.game.gamoto.gamatoto import Helper, Helpers  # noqa: E402
 from bcsfe.core.game.gamoto import ototo as ototo_data  # noqa: E402
+from bcsfe.core.game.catbase.user_rank_rewards import Reward  # noqa: E402
 
 
 Operation = Callable[[core.SaveFile], None]
@@ -407,10 +408,56 @@ def max_cat_base_cannons(save_file: core.SaveFile) -> None:
     cannons.selected_parts = cleaned_selected_parts
 
 
+def claim_user_rank_rewards(save_file: core.SaveFile) -> None:
+    """Mark all currently unlocked user-rank rewards as already claimed."""
+    user_rank_rewards = save_file.user_rank_rewards
+    rank_gifts = user_rank_rewards.read_rank_gifts(save_file).rank_gift or []
+    if not rank_gifts:
+        return
+
+    max_index = max(int(rank_gift.index) for rank_gift in rank_gifts if int(rank_gift.index) >= 0)
+    while len(user_rank_rewards.rewards) <= max_index:
+        user_rank_rewards.rewards.append(Reward.init())
+
+    user_rank = int(save_file.calculate_user_rank())
+    for rank_gift in rank_gifts:
+        index = int(rank_gift.index)
+        if index < 0:
+            continue
+        user_rank_rewards.rewards[index].claimed = int(rank_gift.threshold) <= user_rank
+
+
 def legit_max_cats(save_file: core.SaveFile) -> None:
-    obtainable_cats = save_file.cats.get_cats_obtainable(save_file)
-    # If obtainable list cannot be resolved from game data, avoid unlocking placeholder slots.
-    all_cats = list(obtainable_cats or save_file.cats.get_unlocked_cats())
+    obtainable_cats = save_file.cats.get_cats_obtainable(save_file) or []
+    available_cats_by_id: dict[int, core.Cat] = {
+        int(cat.id): cat for cat in obtainable_cats
+    }
+
+    # Primary source is catguide visibility. For very new versions this file can lag
+    # behind unitbuy rows, so only append IDs that exist beyond picture-book length.
+    pic_book = save_file.cats.read_nyanko_picture_book(save_file)
+    picture_book_total = len(list(getattr(pic_book, "cats", []) or []))
+    unit_buy = save_file.cats.read_unitbuy(save_file)
+    unit_buy_total = len(list(getattr(unit_buy, "unit_buy", []) or []))
+
+    if picture_book_total > 0:
+        for cat_id in range(max(0, picture_book_total), max(0, unit_buy_total)):
+            while len(save_file.cats.cats) <= cat_id:
+                save_file.cats.cats.append(core.Cat.init(len(save_file.cats.cats)))
+
+            unit_buy_data = unit_buy.get_unit_buy(cat_id)
+            if unit_buy_data is None:
+                continue
+            introduced_in = int(getattr(unit_buy_data, "game_version", 0) or 0)
+            if introduced_in > 0 and save_file.game_version < introduced_in:
+                continue
+            available_cats_by_id.setdefault(cat_id, save_file.cats.cats[cat_id])
+
+    # If game data cannot determine availability, keep prior safe fallback.
+    all_cats = [
+        available_cats_by_id[cat_id]
+        for cat_id in sorted(available_cats_by_id.keys())
+    ] or save_file.cats.get_unlocked_cats()
     for cat in all_cats:
         cat.unlock(save_file)
         cat.catguide_collected = True
@@ -426,13 +473,13 @@ def legit_max_cats(save_file: core.SaveFile) -> None:
 
 
 def humanize_uber_legend_plus(save_file: core.SaveFile) -> None:
-    """Human-max tweak: keep max base, set Uber/Legend plus to weighted 1..20."""
+    """Human-max tweak: keep max base, set Uber plus to weighted 0..10."""
     unit_buy = save_file.cats.read_unitbuy(save_file)
     if unit_buy is None:
         return
 
-    # Battle Cats rarity ids: 4=Uber Rare, 5=Legend Rare.
-    target_rarities = {4, 5}
+    # Battle Cats rarity ids: 4=Uber Rare.
+    target_rarities = {4}
 
     for cat in save_file.cats.cats:
         if unit_buy.get_cat_rarity(cat.id) not in target_rarities:
@@ -441,8 +488,8 @@ def humanize_uber_legend_plus(save_file: core.SaveFile) -> None:
         power_up = core.PowerUpHelper(cat, save_file)
         power_up.max_upgrade()
 
-        # Bias toward smaller values while staying in the requested 1..20 range.
-        plus_roll = 1 + int((random.random() ** 2.2) * 19)
+        # Bias toward smaller values while staying in the requested 0..10 range.
+        plus_roll = int((random.random() ** 2.2) * 11)
         max_plus = max(0, int(power_up.get_max_possible_plus()))
         cat.upgrade.plus = min(plus_roll, max_plus)
 
@@ -473,8 +520,12 @@ OPERATIONS: dict[str, tuple[str, Operation]] = {
     "special_skills_max": ("Max support/base upgrades", max_special_skills),
     "cat_base_cannons_max": ("Max cat base cannons + parts", max_cat_base_cannons),
     "legit_max_cats": ("Legit-max all cats", legit_max_cats),
+    "claim_user_rank_rewards": (
+        "Claim all unlocked user rank rewards",
+        claim_user_rank_rewards,
+    ),
     "humanize_uber_legend_plus": (
-        "Human max: Uber/Legend + levels randomized (1..20, low-biased)",
+        "Human max: Uber + levels randomized (0..10, low-biased)",
         humanize_uber_legend_plus,
     ),
     "unlock_all_cats": ("Unlock all cats", unlock_all_cats),
@@ -508,6 +559,7 @@ PRESETS: dict[str, list[str]] = {
         "special_skills_max",
         "cat_base_cannons_max",
         "legit_max_cats",
+        "claim_user_rank_rewards",
         "humanize_uber_legend_plus",
         "clear_story_superior_treasures",
         "max_gamatoto",
@@ -531,6 +583,7 @@ PRESETS: dict[str, list[str]] = {
         "special_skills_max",
         "cat_base_cannons_max",
         "legit_max_cats",
+        "claim_user_rank_rewards",
         "max_gamatoto",
         "clear_story_only",
         "clear_all_maps",
@@ -694,8 +747,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-

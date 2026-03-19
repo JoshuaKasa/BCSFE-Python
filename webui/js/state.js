@@ -207,6 +207,10 @@ const TOOL_OPERATIONS = {
   tool_max_gamatoto: { key: "max_gamatoto", label: "Max Gamatoto" },
   tool_unlock_all_cats: { key: "unlock_all_cats", label: "Unlock All Cats" },
   tool_legit_max_cats: { key: "legit_max_cats", label: "Legit Max Cats" },
+  tool_claim_user_rank_rewards: {
+    key: "claim_user_rank_rewards",
+    label: "Claim User Rank Rewards",
+  },
   tool_clear_story_only: { key: "clear_story_only", label: "Clear Story Only" },
   tool_clear_story_superior_treasures: {
     key: "clear_story_superior_treasures",
@@ -419,6 +423,7 @@ function setButtonTooltips() {
     tool_max_gamatoto: "Max Gamatoto values and helper setup.",
     tool_unlock_all_cats: "Unlock all cats without changing levels.",
     tool_legit_max_cats: "Apply legal max progression to all obtainable cats.",
+    tool_claim_user_rank_rewards: "Mark all unlocked user-rank rewards as already claimed.",
     tool_clear_story_only: "Clear all story stages; keeps current treasures (risky).",
     tool_clear_story_superior_treasures: "Clear story and set treasures to Superior (risky).",
     tool_clear_all_maps: "Mark many map categories as cleared (risky).",
